@@ -14704,7 +14704,7 @@ static void player_effect_screen_fade_in_evaluate(
 		double value1 = arguments->value1;
 		double value2 = arguments->value2;
 
-#ifdef HALO_ARM64_GUEST
+#ifdef HALO_GUEST
 		player_effect_screen_fade_in(*(real const *)&arguments->value0, (real)value1, (real)value2, arguments->value3);
 #else
 		player_effect_screen_fade_in(arguments->value0, value1, value2, arguments->value3);
@@ -14727,7 +14727,7 @@ static void player_effect_screen_fade_out_evaluate(
 		double value1 = arguments->value1;
 		double value2 = arguments->value2;
 
-#ifdef HALO_ARM64_GUEST
+#ifdef HALO_GUEST
 		player_effect_screen_fade_out(*(real const *)&arguments->value0, (real)value1, (real)value2, arguments->value3);
 #else
 		player_effect_screen_fade_out(arguments->value0, value1, value2, arguments->value3);

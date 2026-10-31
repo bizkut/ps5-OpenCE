@@ -77,8 +77,10 @@ GUEST_ABI_FLAGS = [
     "-fno-define-target-os-macros",
     "-D__linux__=1",
     "-D__unix__=1",
-    # the ILP32 guest's code paths, the OpenGL ES renderer's, and the app's
-    # (in the port's sources, each its own macro)
+    # the guest's code paths (an ILP32 guest in a 64-bit process), its
+    # instruction set's, the OpenGL ES renderer's, and the app's (in the
+    # port's sources, each its own macro)
+    "-DHALO_GUEST=1",
     "-DHALO_ARM64_GUEST=1",
     "-DHALO_GLES=1",
     "-DHALO_ANDROID=1",

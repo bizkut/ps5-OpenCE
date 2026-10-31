@@ -734,9 +734,10 @@ static unsigned long walk_up(
 
 	if (walk_up_current_frame)
 	{
-#ifdef HALO_ARM64_GUEST
-		/* an AArch64 frame record: the caller's frame pointer, then the
-		return address, 8 bytes each (the upper halves are zero) */
+#ifdef HALO_GUEST
+		/* port: a 64-bit frame record (AArch64's, x86-64's): the caller's
+		frame pointer, then the return address, 8 bytes each (the upper
+		halves are zero) */
 		routine_address = ((unsigned long *)walk_up_current_frame)[2];
 #else
 		routine_address = ((unsigned long *)walk_up_current_frame)[1];

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Compiles the given platform files (port/linux/src) as the Android guest
-# build does, but without HALO_ARM64_GUEST, HALO_GLES and HALO_ANDROID,
+# build does, but without HALO_GUEST, HALO_ARM64_GUEST, HALO_GLES and HALO_ANDROID,
 # syntax only: the desktop branches of the shared code. Warnings are off,
 # but a call of an undeclared function is still an error. Only files that the guest build compiles can be checked
 # (not memory_watch.c or posix_*). Run in ~/halo-build/src after a build.

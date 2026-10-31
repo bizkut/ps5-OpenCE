@@ -479,21 +479,24 @@ floating-point contraction, as on x86.
 
 ### Game source changes
 
-The port's code tells three things apart, each its own macro, which the
+The port's code tells four things apart, each its own macro, which the
 Android build defines all of (`tools/android_build.py`):
 
-- `HALO_ARM64_GUEST`: the guest's ABI (ILP32 AArch64 code in a 64-bit
-  process);
+- `HALO_GUEST`: the guest's ABI (ILP32 code in a 64-bit process, which the
+  PS5 build's x32 guest shares: docs/ps5_port_plan.md);
+- `HALO_ARM64_GUEST`: its instruction set and the Darwin target the guest
+  is compiled for;
 - `HALO_GLES`: the OpenGL ES renderer;
-- `HALO_ANDROID`: the app (its display, input, files and lifecycle).
+- `HALO_ANDROID`: the app (its display, input, files, lifecycle and its
+  128 MB memory window).
 
 The x86 inline assembly is replaced by C (refer to
 [port/linux/README.md](../linux/README.md#game-source-changes)).
-These changes are in `#ifdef HALO_ARM64_GUEST`:
+These changes are in `#ifdef HALO_ARM64_GUEST` or `HALO_GUEST`:
 
 - Seven `#pragma bss_seg(".bss")` lines are removed. The Darwin target does
   not accept them.
-- A stack walker follows the AArch64 frame records. Thus the log of an
+- A stack walker follows the 64-bit frame records. Thus the log of an
   assertion (`debug.txt`) shows the call sites.
 
 The musl of the guest uses its C math, not the AArch64 assembly. The only

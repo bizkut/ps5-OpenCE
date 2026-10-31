@@ -67,9 +67,10 @@ python tools/ci_build.py linux release   # what CI builds
 
 | Define | Set by | Meaning |
 | --- | --- | --- |
-| `HALO_ANDROID` | Android | The app: its display, input, files and lifecycle |
+| `HALO_ANDROID` | Android | The app: its display, input, files, lifecycle and 128 MB memory window |
 | `HALO_GLES` | Android, web | The OpenGL ES renderer |
-| `HALO_ARM64_GUEST` | Android | The guest's ABI (ILP32 AArch64) |
+| `HALO_GUEST` | Android | The guest's ABI: ILP32 code in a 64-bit process, its C library the guest's musl, SDL reached through `host_imports.list` (the PS5 port's x32 guest shares it: `docs/ps5_port_plan.md`) |
+| `HALO_ARM64_GUEST` | Android | The guest's instruction set (AArch64) and the Darwin target it is compiled for |
 | `HALO_WEB` | Web | The browser: its frames, storage, sockets and WebGL 2's limits (with `HALO_GLES`, not `HALO_ANDROID`) |
 | `HALO_WINDOWS` | Windows (`halo_windows_prefix.h`) | The Windows build |
 | `HALO_RELEASE` | `--release` | No assertions checked |
