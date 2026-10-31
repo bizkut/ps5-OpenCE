@@ -4,8 +4,11 @@ Status: M0's gate passed. Written 2026-10-31 against OpenCE `da8d4556`.
 On the console (.41, `port/ps5/FINDINGS.md`): S1-S4 pass (run2), S5a
 (run6: OpenGL ES 3.2 on Zink on RADV in a plain title) and S5b (run11-13:
 Zink presenting itself on VideoOut at 119.88 Hz, at 3840x2160, 2560x1440
-and 1920x1080) pass. S6-S8 not run. Every other claim about the PS5 below
-cites the repository that measured it.
+and 1920x1080) pass; S7 and S8 pass (run16: sockets, `/data/opence`, the
+maps read in place from the disc image); S6's automatic checks pass
+(run17: pad, keyboard, mouse and AudioOut beside Zink at 120 fps), its
+hands-on checks wait for a person at the console. Every other claim about
+the PS5 below cites the repository that measured it.
 
 ## Summary
 
@@ -34,13 +37,13 @@ The pieces taken from `../forever`:
 |Vulkan driver|`PS5_Mesa` RADV, `radv-winsys=ps5`, with `ps5-proton/ps5-wow/ps5/radv/patches/0001-0003`|Shipped in Forever Launcher 01.000.021|
 |OpenGL|`PS5_Mesa` Zink (same tree, Mesa 26.2.0)|Rendered PokeMMO through WGL under Wine on RADV (OpenGL 4.6); never built native|
 |Presentation|`PS5_Mesa/src/vulkan/wsi/wsi_common_videoout.c` (`VK_KHR_display`, 3840x2160 at 59.94 Hz, 119.88 Hz with title metadata)|Shipped|
-|SDL3 (gamepad, audio, keyboard, events)|`pacbrew-repo/SDL3` (OpenAGC/SDL3 `9b494293`: ScePad, SceAudioOut, keyboard/IME)|Builds; **no hardware test yet** (`SDL3/PORT_STATUS.md:24-31`)|
+|Pad, keyboard, mouse, audio|`libScePad`, `libSceKeyboard`, `libSceMouse`, `libSceAudioOut`, called as SavageWindRecomp's `runtime/ps5/input.c` and `audio.c` call them (D6)|Run in Savage Wind on .41; here, S6 run17|
 |Mbed TLS (DTLS for internet play), zlib|`pacbrew-repo/mbedtls`, `pacbrew-repo/zlib`|Packaged|
 |Title packaging, signing, deploy, launch, logs|`PS5_Vulkan/tools/` (`deploy-title-folder.py`, `run-title.py`, `ps5_console.py`: FTP 2121, klog 3232, control 9111); `make_fself`/`self --sign` as in SavageWindRecomp `ps5/tools/build-title.sh:121-142`|Used by every native title|
 |VRR/high frame rate metadata|`attribute3` with `0x40040` set and `0x80000` clear (`ps5-wow/ps5/title/build.sh:178-184`)|Qualified in 01.000.021|
 
 `../forever`, `../PS5_Vulkan` and `../PS5_Mesa` are read-only for this
-port. Changes OpenCE needs in Mesa or SDL3 are kept as patches in this
+port. Changes OpenCE needs in Mesa are kept as patches in this
 repository and applied to pinned exports (as `ps5-wow/ps5/radv/patches` and
 SavageWindRecomp `ps5/patches` do).
 
@@ -87,8 +90,9 @@ Forever's Wine runtime already does.
 
 - A Vulkan or AGC renderer. The renderer stays `d3d8_gl.c`.
 - Shipping game data. The user copies their own `maps/` (as for every port).
-- HDR, frame generation, PS5 trophies, activities, the PS5 keyboard dialog
-  beyond what SDL3's IME path provides.
+- HDR, frame generation (unless M6 calls for it, D12), PS5 trophies,
+  activities, the PS5 on-screen keyboard (the game's own on-screen keyboard
+  works with the pad; a USB keyboard types).
 - Changing `../forever` or the Forever Launcher title.
 - A 64-bit (LP64) build of the game: the cache files and saved games hold
   32-bit pointers (`port/android/README.md:335-344`).
@@ -102,7 +106,7 @@ Forever's Wine runtime already does.
 |`../PS5_Mesa`|`1ba9874f478657ccf6da72ce55f0260164cc0bd0` on `main` (Mesa 26.2.0; the revision `../PS5_Vulkan`'s `tools/build-radv.sh` pins). `origin/main` `a8800d9` adds three Zink/WGL fixes. Branch `feat/videoout-hdr10-vrr` `b260481` (pushed to `bizkut/PS5_Mesa`) merges `feat/videoout-hdr10` `3907ff7` (HDR10 output, upstream PR #6) and `fix/videoout-vrr-idle-floor` `f67ce2e` (upstream PR #5); its commit message records a console run with HDR10 PQ and 119.88 Hz VRR at once. Forever's `../forever/PS5_Mesa` `f10c4ba` (export of `15a5e9933e14`, PokeMMO's qualified Zink) is the reference if Zink behaves differently|
 |`../forever/ps5-proton/ps5-wow`|`bdb6e38` (`ps5/radv/patches/0001-0003`, title helpers for reference)|
 |`../PS5_Vulkan`|`f410e67a0241b3e8edcdbcd2a9b285dfc4a412ed` on `main` (title tooling, deploy and run tools; its tooling is identical to `9442a16`, which run2 used and which a rebase left on no branch; its own SDK pin `b83202be` is older than the one above and not used). Branch `feat/videoout-hdr10` `c9704ea` holds the HDR10 console runs|
-|`../forever/pacbrew-repo`|`2e3eaf9c5fda03535d0b5e5c3f807a38acdac452` (SDL3, mbedtls, zlib recipes)|
+|`../forever/pacbrew-repo`|`2e3eaf9c5fda03535d0b5e5c3f807a38acdac452` (mbedtls, zlib recipes)|
 |Docker image for the Mesa build|`forever-launcher-linux:ubuntu-24.04` (`daab52de3af4`, cached on this machine; reuse, never rebuild)|
 
 The pins go into `port/ps5/deps.lock`; `tools/ps5_deps.py` exports each
@@ -127,8 +131,8 @@ recipe (`ps5/tools/link-recipe.sh`), the fixed guest memory through
 `FINDINGS.md` records, and its measurements of FSR 4, FSR 1 and frame
 generation (D12). Still to take: its storage and paths layer
 (`runtime/platform/paths_ps5.c`, `runtime/storage_ps5.c`), reading game data
-in place (D7), its SDL3 shim for pad, audio and events if pacbrew's SDL3
-fails S6 (`runtime/ps5/`), its benchmark method (M6), and its native-4K
+in place (D7), its pad, keyboard, mouse and audio backends (D6,
+`runtime/ps5/`), its benchmark method (M6), and its native-4K
 captures for comparing pictures.
 
 ## Architecture
@@ -142,7 +146,7 @@ flowchart LR
   end
   subgraph host["Host (eboot.bin, x86-64 PS5)"]
     loader["loader, memory, threads, syscalls"]
-    sdl["SDL3 (pacbrew PS5 port)"]
+    devices["pad, keyboard, mouse, AudioOut (libScePad, libSceKeyboard, libSceMouse, libSceAudioOut)"]
     gl["Mesa: EGL + Zink + RADV (one static archive)"]
     net["sockets, Mbed TLS, HTTPS"]
   end
@@ -268,16 +272,23 @@ custom licence, cannot be combined with the AGPL; the desktop shaders need
 GLSL 4.50), SDL3's OSMesa (software rendering), a new Vulkan renderer (out of
 scope).
 
-**D6. SDL3 is the pacbrew PS5 port, without its video driver.** The host
-links `libSDL3.a` from `pacbrew-repo/SDL3` and initialises only events,
-gamepad and audio: RADV's WSI owns VideoOut, so SDL's software-framebuffer
-window must not open it. `host_sdl_create_window` and the `host_sdl_gl_*`
-imports call EGL directly. The port has not been run on hardware
-(`SDL3/PORT_STATUS.md:24-31`); M0 runs it. If its input or audio fail,
-the `host_sdl_*` imports are implemented on `ScePad`/`SceAudioOut`
-directly instead (the imports are 37 functions,
-`port/android/host_imports.list:17-53`; Forever's `ps5-wow/ps5/title/input.c`
-shows the pad calls), and the guest does not change.
+**D6. The pad, keyboards, mice and audio use the PS5's own libraries, as
+Savage Wind does.** pacbrew's SDL3 input port drops short pad transitions
+(it reads `scePadReadState`), has no keyboard or mouse, and no motion data
+(SavageWindRecomp `docs/PS5-PORT-PLAN.md:217-222`, citing
+`SDL3-input/PORT_STATUS.md:30-39`), so Savage Wind wrote its own backends
+(`runtime/ps5/input.c`, `audio.c`), which run on .41 (its
+`ps5/FINDINGS.md:477-501,521-554`). The host implements the `host_sdl_*`
+imports the guest's SDL calls cross (`port/android/host_imports.list:17-53`)
+on them: `scePadRead` drained every poll (64 records, oldest first), in
+SDL's DualSense button and axis numbering; `sceKeyboardRead` and
+`sceMouseRead` for indexes 0 and 1; one `SceAudioOut` main port (48 kHz
+stereo S16, 256-frame periods) fed by one worker that runs the guest's
+audio callback; window and GL calls go to EGL (D5). OpenCE adds what Savage
+Wind does not need: a pad for each signed-in user, for split screen. No SDL
+library is linked on the PS5, and the guest does not change. Code taken
+from Savage Wind keeps its notice (GPL-3.0-or-later, which the AGPL
+allows). S6 (run17) opened all of them beside Zink presenting at 120 fps.
 
 **D7. Data lives in `/data/opence`.** `maps/`, `custom_maps/`, `mods/`,
 `config.toml`, saved games and logs, as `paths.data` on Linux. Reading `/data`
@@ -296,8 +307,13 @@ games, settings) are small and go direct, so no write broker.
 `posix_net.c`, `posix_dtls.c` and `posix_upnp.c` are called through the
 generated posix stubs, as on Android (`port/android/README.md:384-393`); DTLS
 uses Mbed TLS from pacbrew; HTTPS (`host_https_get`) uses Mbed TLS too.
-Whether a title may bind UDP ports and broadcast on the LAN is measured in
-M0; nothing measured so far covers it.
+S7 (run16): a title binds UDP and TCP port 2302, receives and answers
+datagrams and connections from another machine, broadcasts and receives its
+own broadcast, and connects to the internet. Name lookups go to libSceNet's
+resolver (`sceNetResolverStartNtoa`, 0.2 s for a first lookup): libc's
+`getaddrinfo` is the platform layer's refusal in a title link. Whether
+another machine on the console's LAN receives its broadcasts is not
+measured yet (no machine of this project is on that LAN; M8 needs one).
 
 **D9. The PS5 build plays with the others only if its simulation agrees.**
 The guest is compiled with `-ffp-contract=off` and the vendored musl maths,
@@ -388,8 +404,8 @@ The x32 stubs:
 - guest to host: `jmp *slot(%rip)` through an 8-byte import slot the loader
   fills; the generator zero-extends 32-bit pointer arguments before host
   functions that take real pointers (GL, posix), from the declared types;
-- host to guest (SDL's audio callback, thread entry): the callback runs on
-  a thread with a guest stack (`port/android/host/host_sdl.c`'s design);
+- host to guest (the audio worker's callback, thread entry): the callback
+  runs on a thread with a guest stack (`port/android/host/host_sdl.c`'s design);
 - host pointers above 4 GB never reach the guest: mapped GL buffers are
   copied (`host_gl_buffer_write`, `host_gl_read_buffer`), as on Android.
 
@@ -399,9 +415,9 @@ The x32 stubs:
 |---|---|
 |`configure.py`|`--ps5` and `--ps5-sdk`, the `ps5` and `ps5_linux_host` targets|
 |`tools/ps5_build.py`|the Ninja graph: guest objects, image, host objects, eboot, SELF, title folder, assets (from `tools/android_build.py`'s structure)|
-|`tools/ps5_deps.py`, `port/ps5/deps.lock`|pinned exports and builds: SDK, Mesa (in the cached Docker image), SDL3, Mbed TLS, zlib|
-|`port/ps5/host/`|`host_main.c` (start, paths, splash, exit), `host_memory_ps5.c`, `host_loader_ps5.c`, `host_egl.c`, `host_ps5_pad.c` (only if D6's fallback is taken)|
-|`port/ps5/patches/mesa/`, `port/ps5/patches/sdl3/`|patches over the pinned exports|
+|`tools/ps5_deps.py`, `port/ps5/deps.lock`|pinned exports and builds: SDK, Mesa (in the cached Docker image), Mbed TLS, zlib|
+|`port/ps5/host/`|`host_main.c` (start, paths, splash, exit), `host_memory_ps5.c`, `host_loader_ps5.c`, `host_egl.c`, `host_ps5_input.c`, `host_ps5_audio.c` (D6)|
+|`port/ps5/patches/mesa/`|patches over the pinned Mesa export|
 |`port/ps5/sce_sys/`|`param.json` (PPSA99117, `attribute3` `0x40040`), `icon0.png` from the title art (`tools/title_assets.py`)|
 |`port/ps5/README.md`|the PS5 build, installation, the data folder, settings, finding problems (in the style of `port/android/README.md`)|
 |`tools/test_ps5_build.py`|the graph and the image (no console)|
@@ -431,11 +447,11 @@ Small probe titles (`port/ps5/probe/`), each answering one question:
 |S4|Do write faults reach the host's handler?|a `PROT_READ` page in the window is written, `SIGSEGV`/`SIGBUS` handler unprotects it, the write completes (the memory watch); otherwise the hash fallback (`host_memory_watch_use_hashes`) is the PS5 default|
 |S5a|Zink on RADV, native, without a window|Zink built with the patch that takes `vkGetInstanceProcAddr` from the linked RADV; an EGL surfaceless pbuffer context reports Zink and RADV, draws, and its `glReadPixels` result, copied into a RADV `VK_KHR_display` swapchain image, shows on the TV for 300 frames; run with S1's reservations in place (guest window below 4 GB, RADV's `0x200000000` window untouched)|
 |S5b|Zink presenting itself|the PS5 EGL window surface (kopper over `VK_KHR_display`) presents 300 frames at 3840x2160 with no readback|
-|S6|pacbrew SDL3 on hardware, beside RADV|SDL initialised with events, gamepad and audio only (no video subsystem) while S5a or S5b presents: DualSense buttons and sticks, a USB keyboard's keys, a 440 Hz tone through `SDL_OpenAudioDeviceStream`, and no VideoOut error from either side|
-|S7|Sockets from a title|UDP bind on 2302, LAN broadcast to and from a Linux machine, TCP and DTLS to the internet|
-|S8|`/data/opence`|with ShadowMountPlus: create, write, rename, read back; without: the error is what D7 shows|
+|S6|The PS5's input and audio libraries beside Zink|while S5b presents: the signed-in user's pad opened and read, keyboards and mice opened and read, a 440 Hz tone through one AudioOut port at 48 kHz with no late period, no VideoOut error; with a person at the console: DualSense buttons and sticks, a USB keyboard's keys, the tone heard|
+|S7|Sockets from a title|UDP and TCP on 2302 to and from another machine, a broadcast sent and received, a name resolved, TCP and UDP to the internet (DTLS itself in M8, with Mbed TLS)|
+|S8|`/data/opence`|with ShadowMountPlus: create, write, rename, read back; the disc image's maps read in place, identical to the same files read on Linux; without ShadowMountPlus: the error is what D7 shows|
 
-Order: S1, S2 and S3 first, before any Mesa or SDL build work; then S5a,
+Order: S1, S2 and S3 first, before any Mesa build work; then S5a,
 S5b, S6; the rest in any order.
 
 Gate: S1, S2, S3, S5a pass. If S1 fails, stop and report: no route works
@@ -482,9 +498,9 @@ difference is recorded in `port/ps5/FINDINGS.md`.
 
 ### M4. Input and audio
 
-DualSense through SDL3 to `xinput_sdl.c` (four pads for split screen),
-USB keyboard and mouse, rumble; audio at 48 kHz stereo through
-`dsound_sdl.c`.
+DualSense through the native backend (D6) to `xinput_sdl.c` (a pad for each
+signed-in user, four for split screen), USB keyboard and mouse, rumble; audio
+at 48 kHz stereo through `dsound_sdl.c`.
 
 Done when: with the DualSense, a person moves, fires, drives and navigates
 every settings screen, and four pads play split screen; ten minutes of the
@@ -536,8 +552,8 @@ Done when: `port/ps5/README.md` and the settings table are complete;
 runs the Linux-hosted guest tests; a release ZIP of `PPSA99117` installs
 on a console without OpenCE's sources; a one-hour soak ends without a
 signal or an error in the klog; the licences of the shipped binaries
-(SDK runtime GPL 3.0, Mesa MIT, SDL3 zlib, Mbed TLS Apache 2.0) are listed
-in the title folder.
+(SDK runtime GPL 3.0, Mesa MIT, Mbed TLS Apache 2.0, Savage Wind's backends
+GPL-3.0-or-later) are listed in the title folder.
 
 ## Testing
 
@@ -561,7 +577,7 @@ in the title folder.
 |The PS5 reserves part of `0x80000000`-`0x88000000` in titles|No PS5 port by any route (the cache files fix these addresses)|S1 is the first probe, before any other work|
 |Executable memory is refused for a title without Forever's setup|No image loading|S2 first; Forever's Wine runtime maps loaded code with `mprotect(PROT_EXEC)`, the probe checks the same in a plain title|
 |Native Zink needs more Mesa work than the EGL platform|Late first frame|S5 before any game work; readback into a Vulkan swapchain as a stop-gap presentation|
-|SDL3's PS5 port fails on hardware|Input or audio missing|D6's fallback to direct `ScePad`/`SceAudioOut` behind the same imports|
+|The native pad backend numbers buttons or axes differently from SDL's DualSense driver, which the desktop mappings assume|Wrong controls|Numbered as SDL's driver numbers them (SavageWindRecomp `runtime/ps5/input.c:144-155`); M4 checks every button and axis by hand|
 |x32 ABI mismatches in the game's sources (prototypes, varargs)|Wrong values, rare crashes|`android_abi_check.py` for x32 in M1; Linux-hosted runs of the whole test suite|
 |Direct memory pressure (RADV, Zink, the game share 12 GiB)|Allocation failures|The game needs well under 1 GiB; log `sceKernelAvailableDirectMemorySize` at start and each level|
 |x32 floating point differs from the i386 build|No cross-play|`net_compare.py` in M1 under Linux, before any console time is spent on it|
