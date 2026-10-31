@@ -596,3 +596,28 @@ off. All four reached their 45-second exit and `LoadExec exit (0)`.
 
 The owner's eye on the TV is the check of the picture: no pixel readback
 of the PQ output has been made.
+
+## 2026-10-31: The 01.000.000 release build (release run5, run6)
+
+Built from tag `01.000.000` (9e0aad55, with HDR10) in a clean worktree,
+`--portable --release`; eboot SHA-256
+`442f6a5820ab0f506a0a985abd9a8ab425bc394349bb5315a9ff52c9a5e001dc`, the
+build identity `01.000.000`; the zip
+`OpenCE-PS5-01.000.000.zip` SHA-256
+`1705708d1463b5776e0b3e1a673a8ca11a8377fb98fd539194785478b055aade`.
+Evidence in `build/ps5/evidence/release/run5` and `run6`, the PS5's HDR on.
+
+- Run5 (env file: only `HALO_EXIT_AFTER=40`): `/data/opence/config.toml`
+  had `hdr = true` and `hdr_output = true`, written at 20:15 during the HDR
+  runs (what wrote them was not established), so the game asked for HDR:
+  `dynamic_range 2, HDR10 on`, EGL RGB10_A2 BT.2020 PQ, the WSI's and
+  kopper's HDR10 swapchain lines, HDMI `YCC2100_PQ`. Both signed-in users
+  got a pad; after the first 10 s, 1199 frames at 8.342 ms mean; AudioOut
+  with no underrun; `debug.exit_after`, `LoadExec exit (0)`.
+- Run6 (`HALO_HDR=false`, `HALO_HDR_OUTPUT=false`): `HDR requested 0`, EGL
+  RGBA8 SDR; the same pace and audio; `LoadExec exit (0)`. The config file
+  was unchanged by it.
+
+Afterwards the env file and the M0 probes' leftovers (`opence_*.txt`,
+`probe_guest.elf`, `s78-env.txt`) were removed from
+`/data/homebrew/PPSA99117`; the console has the release title alone.
