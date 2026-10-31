@@ -205,3 +205,98 @@ of it is in the repository; only these counts are.
 Consequence: at 3840x2160 a typical wall's 128- or 256-texel texture spans
 hundreds of pixels; more resolution sharpens edges, the HUD and text, not
 the textures (plan D11).
+
+## 2026-10-31: S8 on .41: `/data/opence`, and the maps read in place (run14-run16)
+
+Probe `port/ps5/probe/s78.c` (`tools/ps5_probe.py s78`), an unelevated
+title, ShadowMountPlus loaded on .41.
+
+- `/data/opence` is a directory the title sees (mode 777). 4 MiB written in
+  1 MiB writes and synced took 207.9 ms (19.2 MiB/s, the same in all three
+  runs), renamed over an existing file, read back identical (mode 666),
+  removed with its folder.
+- The owner's disc image is read in place: the XDVDFS volume at offset 0
+  (an xiso), a root table of 88 bytes and 4 entries, a `maps` folder of 24
+  files and 1,860,638,720 bytes, each with a cache file header (`daeh`
+  first, `toof` last). `a10.map` (173,903,872 bytes) read out of the image
+  on the console has CRC-32 `7b1e98a0`, the same as zlib's of the file
+  extracted from the image's copy on Linux.
+- Reads, by run:
+
+  |Run|`d40.map`: 256 random 64 KiB reads, mean (slowest)|`a10.map` whole in 1 MiB reads|
+  |---|---|---|
+  |run14 (first after the image's upload)|1.64 ms (3.11 ms), 38.2 MiB/s|120.0 MiB/s, slowest 12.5 ms|
+  |run15|0.74 ms (0.81 ms), 84.5 MiB/s|80.7 MiB/s, slowest 13.3 ms|
+  |run16|0.78 ms (1.07 ms), 79.9 MiB/s|80.7 MiB/s, slowest 14.0 ms|
+
+  Savage Wind measured an unelevated title at 133 MiB/s sequential and
+  1.5-1.6 ms per random 64 KiB read (its `ps5/FINDINGS.md:109-111`). A
+  campaign map of about 170 MB takes 1.5-2.1 s to read.
+- Not run: a console without ShadowMountPlus (it is loaded on .41).
+
+Consequence: plan D7 holds. The title reads the maps from the disc image;
+nothing of the image needs copying.
+
+## 2026-10-31: S7 on .41: sockets (run14-run16)
+
+The same probe, with `tools/ps5_probe.py s7-peer` on this Linux machine.
+The network: this machine (10.1.1.15) reaches the console's LAN
+(10.0.1.0/24) through a Tailscale subnet router, so the console sees the
+peer's traffic as coming from the router's LAN address, 10.0.1.10; no
+machine of this project is on the console's own LAN. In run14 the title
+sent first, to the machine's tailnet address 100.107.135.71: no datagram
+arrived and TCP timed out (errno 60), because the console's LAN has no
+route there. From run15 the peer starts each exchange.
+
+- UDP port 2302 binds (runs 14-16). The peer's datagram arrives on 2302,
+  the title's answer from 2302 reaches the peer, and the peer's
+  confirmation arrives (run15, run16).
+- A TCP socket listens on 2302; the peer connects (0.2 s after the listen),
+  its line is echoed and the echo confirmed (run15, run16).
+- `SO_BROADCAST` is accepted; a datagram to 255.255.255.255:2302 is sent
+  and comes back to the title's own socket from 10.0.1.41 (runs 14-16).
+  Whether another machine on the LAN receives it is not measured.
+- libc's `getaddrinfo` returns 4 (`EAI_FAIL`) at once: the title link binds
+  it to the platform layer's refusal (`ps5_getaddrinfo`, as
+  `tools/ps5_title.py` takes from `radv-link.sh`). libSceNet's resolver
+  (`sceNetPoolCreate` of 0x4000 bytes, `sceNetResolverCreate`,
+  `sceNetResolverStartNtoa`, as Forever's
+  `ps5-wow/ps5/probes/psmkit-wine/native-entry.c:1145-1190` calls them)
+  resolved github.com in 200.7 ms (run16), and a TCP connection to it on
+  port 443 was made in 231.5 ms.
+- A DNS query over UDP to 1.1.1.1 was answered in 103.7 ms (run14) and
+  110.1 ms (run16). In run15 the probe's single try had no answer within
+  3 s; since run16 it tries twice each at 1.1.1.1 and 8.8.8.8, and the
+  first try was answered.
+- DTLS itself was not run: it needs Mbed TLS (M8).
+
+Consequence: the host's name lookups use libSceNet's resolver (plan D8).
+
+## 2026-10-31: S6 on .41: pad, keyboard, mouse and AudioOut beside Zink (run17)
+
+Probe `port/ps5/probe/s5_zink.c` built with `PROBE_S6` and
+`port/ps5/probe/s6_devices.c` (`tools/ps5_probe.py s6`): S5b's window at
+3840x2160 for 20 s while the devices are read each frame and a tone plays.
+The calls and records are those of SavageWindRecomp's `runtime/ps5/input.c`
+and `audio.c`; nobody was at the console.
+
+- Presentation unchanged by the devices: 2400 frames in 20.00 s
+  (120.03 fps), intervals 8.26-8.44 ms after frame 60.
+- User service 0, initial user 486509363; `scePadInit` 0, `scePadOpen`
+  gave a handle; 2400 `scePadRead` calls returned 12,045 records, no error,
+  the pad connected (a DualSense on the console; no button or stick moved).
+- Keyboard and mouse modules loaded, `sceKeyboardInit` and `sceMouseInit`
+  0, indexes 0 and 1 of each opened; 4800 reads of each kind, no error, no
+  device connected.
+- `sceAudioOutOpen(0xff, main, 0, 256, 48000, S16 stereo)` opened a port:
+  3753 periods output in 20.00 s (3750 at 48 kHz), no error, no return
+  later than two periods, slowest 5.57 ms.
+- No VideoOut or AudioOut error in the klog. (The `PFAuthClient` errors and
+  one `process_starter_util.cpp` line are in every klog since run11,
+  S5b's included.)
+
+Not done, needing a person at the console: DualSense buttons and sticks, a
+USB keyboard's keys, whether the tone is heard.
+
+Consequence: plan D6 implements the `host_sdl_*` imports on these
+libraries; pacbrew's SDL3 is not used.

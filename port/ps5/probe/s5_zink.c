@@ -17,10 +17,14 @@ probes on the console"): OpenGL ES through Zink on RADV in a PS5 title.
      Zink's kopper presents to: port/ps5/patches/mesa/0005): for
      WINDOW_FRAMES frames the drawing is presented with eglSwapBuffers, and
      the frames' intervals are timed.
+     S6 (built with PROBE_S5B and PROBE_S6, with s6_devices.c): S5b's
+     presentation for S6_SECONDS (or S6_SECONDS from s5a-env.txt), the pad,
+     keyboards and mice read each frame and a tone played (s6_devices.c).
 
 Every line goes to standard output (the console's klog) and to
-opence_s5a.txt or opence_s5b.txt in the title's folder; Mesa's own messages
-reach the klog through standard error. The last line counts the failures. */
+opence_s5a.txt, opence_s5b.txt or opence_s6.txt in the title's folder;
+Mesa's own messages reach the klog through standard error. The last line
+counts the failures. */
 
 #define _GNU_SOURCE
 #include <errno.h>
@@ -49,7 +53,12 @@ int sceSystemServiceHideSplashScreen(void);
 /* RADV's archive (linked whole): the ICD entry a Vulkan loader would use */
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vk_icdGetInstanceProcAddr(VkInstance instance, const char *name);
 
-#ifdef PROBE_S5B
+#if defined(PROBE_S6)
+/* S6: S5b's presentation with the devices of s6_devices.c */
+#include "s6_devices.h"
+#define PROBE_NAME "S6"
+#define LOG_PATH "/app0/opence_s6.txt"
+#elif defined(PROBE_S5B)
 #define PROBE_NAME "S5b"
 #define LOG_PATH "/app0/opence_s5b.txt"
 #else
@@ -60,11 +69,13 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vk_icdGetInstanceProcAddr(VkInstance in
 #define HEIGHT 2160
 #define FRAMES 300
 #define WINDOW_FRAMES 1200
+#define S6_SECONDS 20
 #define MIB 0x100000ull
 #define PAGE 0x4000ull
 
 static FILE *log_file;
 static int failures;
+static int window_frames = WINDOW_FRAMES;
 
 static void say(const char *format, ...)
 {
@@ -720,7 +731,7 @@ static void vk_survey(void)
 }
 
 #ifdef PROBE_S5B
-/* WINDOW_FRAMES frames of the gradient on the current window surface,
+/* window_frames frames of the gradient on the current window surface,
 width x height, presented with eglSwapBuffers: 1 if every swap succeeded */
 static int swap_run(const char *label, unsigned width, unsigned height)
 {
@@ -729,7 +740,7 @@ static int swap_run(const char *label, unsigned width, unsigned height)
 
 	p_glViewport(0, 0, (GLsizei)width, (GLsizei)height);
 	start = previous = ticks();
-	for (frame = 0; frame < WINDOW_FRAMES; frame++)
+	for (frame = 0; frame < window_frames; frame++)
 	{
 		p_glClear(GL_COLOR_BUFFER_BIT);
 		p_glUniform1f(blue_location, (float)(frame % 120) / 119.0f);
@@ -739,6 +750,9 @@ static int swap_run(const char *label, unsigned width, unsigned height)
 			say("%s: eglSwapBuffers failed at frame %d: %#x", label, frame, eglGetError());
 			break;
 		}
+#ifdef PROBE_S6
+		s6_frame();
+#endif
 		interval = ticks() - previous;
 		previous += interval;
 		/* the first 60 frames start the swapchain */
@@ -755,7 +769,7 @@ static int swap_run(const char *label, unsigned width, unsigned height)
 		mean / 1e6, interval_min / 1e6, interval_max / 1e6);
 	/* FIFO at 119.88 Hz at most: frames faster than 7 ms each were not shown
 	(a swap without a swapchain returns at once) */
-	return swapped == WINDOW_FRAMES && mean >= 7000000;
+	return swapped == window_frames && mean >= 7000000;
 }
 #endif
 
@@ -796,10 +810,22 @@ int main(void)
 #ifdef PROBE_S5B
 	if (gl_ok)
 	{
+#ifdef PROBE_S6
+		double seconds = getenv("S6_SECONDS") ? atof(getenv("S6_SECONDS")) : S6_SECONDS;
+
+		window_frames = (int)(seconds * 120.0);
+		s6_start(say);
+#endif
 		sceSystemServiceHideSplashScreen();
 		presented = swap_run("window", surface_size[0], surface_size[1]);
+#ifdef PROBE_S6
+		failures += s6_finish(window_frames / 119.88);
+#endif
 	}
-	verdict(presented, "1200 frames drawn by Zink and presented by kopper on VideoOut at the display's pace");
+	say("%s %s: %d frames drawn by Zink and presented by kopper on VideoOut at the display's pace", PROBE_NAME,
+		presented ? "PASS" : "FAIL", window_frames);
+	if (!presented)
+		failures++;
 #else
 	if (gl_ok && vk_start())
 	{
