@@ -535,8 +535,10 @@ Linux build shows.
 ### M6. Performance
 
 Measure with `HALO_PROFILE` builds (`--profile`) on the console, the way
-Savage Wind's benchmarks do (`savagewind-ps5-game-benchmark`: a route with no
-player, frames on time, mean, p95 and p99, GPU and CPU time per frame).
+Savage Wind's built-in benchmark does (SavageWindRecomp `runtime/benchmark.c`,
+set up by `benchmark.txt` in the data root, `docs/PS5-PORT-PLAN.md` M6 there:
+a route with no player, frames on time, mean, p95 and p99, GPU and CPU time
+per frame).
 
 Done when: at 3840x2160, 2560x1440 and 1920x1080, a scripted route through
 `a10`, `b30` and `d40` is measured over ten minutes for the share of frames

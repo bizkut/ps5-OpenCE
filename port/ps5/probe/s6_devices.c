@@ -10,9 +10,13 @@ whose frames Zink presents (s5_zink.c built with PROBE_S6):
     stereo S16 in 256-frame periods, fed by one thread that sceAudioOutOutput
     paces.
 
-The functions, their arguments and the records' layouts are those
-SavageWindRecomp's runtime/ps5/input.c and audio.c use on the same SDK and
-console (no SDK header declares them); the code here is the probe's own.
+The declarations of the system's functions and the layouts of their
+records (pad, keyboard, mouse) are taken from SavageWindRecomp's
+runtime/ps5/input.c and audio.c (GPL-3.0-or-later; Copyright the Savage
+Wind Recomp contributors), which call them on the same SDK and console (no
+SDK header declares them). The rest is the probe's own.
+
+SPDX-License-Identifier: GPL-3.0-or-later
 
 Checked without a person: every library starts and every device opens, no
 read or output fails, and the outputs keep pace with 48 kHz. A person at the
