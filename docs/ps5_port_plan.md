@@ -114,6 +114,23 @@ Title ID: **PPSA99117**, free in `../forever/catalog-submission/apps/` and
 in every local `sce_sys/param.json` on 2026-10-31. Check again before the
 first install.
 
+### The reference port
+
+`../SavageWindRecomp` (branch `ps5`, title PPSA90212) is a working native
+PS5 game port on the same libraries, and the reference for this one (the
+owner's direction, 2026-10-31): where it measured something, this plan uses
+its result; where it solved something, this port does it the same way unless
+a finding here says otherwise. Already taken from it: the title's link
+recipe (`ps5/tools/link-recipe.sh`), the fixed guest memory through
+`sceKernelReserveVirtualRange` and direct memory, the data folder under
+`/data` with ShadowMountPlus, `param.json`'s `attribute3`, the evidence and
+`FINDINGS.md` records, and its measurements of FSR 4, FSR 1 and frame
+generation (D12). Still to take: its storage and paths layer
+(`runtime/platform/paths_ps5.c`, `runtime/storage_ps5.c`), reading game data
+in place (D7), its SDL3 shim for pad, audio and events if pacbrew's SDL3
+fails S6 (`runtime/ps5/`), its benchmark method (M6), and its native-4K
+captures for comparing pictures.
+
 ## Architecture
 
 ```mermaid
@@ -266,9 +283,14 @@ shows the pad calls), and the guest does not change.
 `config.toml`, saved games and logs, as `paths.data` on Linux. Reading `/data`
 from a title needs ShadowMountPlus (SavageWindRecomp
 `docs/PS5-PORT-PLAN.md:281-295`); without it the title shows one message
-saying so and exits. Writes go direct: title writes slow down only after
-about 2 GiB written (SavageWindRecomp `ps5/FINDINGS.md:104-116`), far beyond
-what the game writes, so no write broker.
+saying so and exits. The player puts their disc image there (the owner's,
+`Halo - Combat Evolved (USA) (Rev 2).xiso.iso`, 3.6 GB, is in
+`/data/opence` on .41). The title reads the maps out of the image in place,
+as Savage Wind reads its packages (`docs/PS5-PORT-PLAN.md:145-149` there),
+rather than copying them as `port/linux/src/xiso.c` does: the maps are
+1.8 GB, and title writes slow from about 2 GiB written
+(SavageWindRecomp `ps5/FINDINGS.md:104-116`). The game's own writes (saved
+games, settings) are small and go direct, so no write broker.
 
 **D8. Networking goes through the host's sockets.** The guest's
 `posix_net.c`, `posix_dtls.c` and `posix_upnp.c` are called through the
@@ -312,7 +334,29 @@ does, 2560x1440 or 1920x1080. The other sizes stay a setting, like
 `display.resolution` on the desktop, and the existing `display.anti_aliasing`
 (`"smaa"`, `"ssaa2x"`) and `display.resolution_scaling` work as on every
 port. What 4K adds to this game is sharper edges, HUD and text; its
-textures were made for 640x480 and gain nothing.
+textures do not gain detail: the Xbox drew 640x480, and of the 3,751
+bitmaps in the owner's disc image the median's longer side is 128 texels,
+88.5 % are 256 or less and 75 exceed 512 (`port/ps5/FINDINGS.md`). The
+existing `display.anisotropic_filtering` and `display.model_detail =
+"native"` are what sharpen surfaces and distant models at 4K.
+
+**D12. Real frames first; an upscaler or frame generation only where M6
+shows the need.** OpenCE already draws a real frame for each refresh,
+interpolating the 30 game ticks a second (`display.interpolation`). For each
+lever, what the reference port measured on .41 and what it would need here:
+
+|Lever|Cost on the PS5|Needs from the renderer|Use here|
+|---|---|---|---|
+|Native 3840x2160|M6 measures it|nothing|the default if it holds 120 fps (D11)|
+|Lower size, VideoOut scales (2560x1440, 1920x1080)|less GPU; S5b ran both at 119.88 Hz|nothing|the first fallback, a setting|
+|FSR 1 (EASU + RCAS) on the 3D view, HUD at full size|a pass; Savage Wind's 4K output default before FSR 3.1 (`runtime/nvn/output_scale.c`)|nothing|if the GPU limits at 4K: better than VideoOut's scaling at the same cost|
+|FSR 4 (`../ps5-fsr4`)|on RADV 3.8 ms for 1280x720 to 1920x1080, 14.3 ms for 1920x1080 to 3840x2160 (SavageWindRecomp `ps5/FINDINGS.md:1088-1103`)|linear colour, depth, motion vectors and jitter, as Vulkan images (`ps5-fsr4/docs/FSR4_SDK.md:73-119`); "No OpenGL backend"|never at 4K output: 14.3 ms is beyond 120 fps's 8.33 ms alone. At 1920x1080 output it fits (3.8 ms), as anti-aliasing better than native in ps5-fsr4's captures, but Halo's renderer has no motion vectors (Savage Wind needed a spike to reconstruct them, `docs/motion-vectors-spike.md` there) and Zink would have to share its images with FSR 4's compute. A later quality option, after M6, measured against SMAA|
+|Frame generation, MihawkGen (`../PS5_MihawkGen`)|Savage Wind: 59.6 game fps presented at 119.3 fps; 1.6 to 2.75 ms per generated frame (`ps5/FINDINGS.md:744-761,903-921` there)|the 3D view without the HUD (OpenCE draws the HUD after it, `render/render.c`), colour only|only if the CPU cannot hold 120 real frames: it adds a frame of latency to a shooter, ghosts in fast motion (the owner saw it in Savage Wind), and stays off in menus|
+|OptiScaler (`../OptiScaler`)|-|a PC game's own DLSS, FSR or XeSS calls in D3D11, D3D12 or Vulkan, which it redirects (its README)|not applicable: OpenCE draws OpenGL, and a PS5 title has nothing to inject into|
+
+M6 records GPU and CPU time per frame, as Savage Wind's benchmarks do, so
+that the lever matches the limit: a GPU limit takes the lower size or FSR 1,
+a CPU limit (the game, Zink's command recording) frame generation.
 
 ### The guest/host boundary
 
@@ -455,20 +499,27 @@ Linux build shows.
 
 ### M6. Performance
 
-Measure with `HALO_PROFILE` builds (`--profile`) on the console.
+Measure with `HALO_PROFILE` builds (`--profile`) on the console, the way
+Savage Wind's benchmarks do (`savagewind-ps5-game-benchmark`: a route with no
+player, frames on time, mean, p95 and p99, GPU and CPU time per frame).
 
 Done when: at 3840x2160, 2560x1440 and 1920x1080, a scripted route through
 `a10`, `b30` and `d40` is measured over ten minutes for the share of frames
-within 8.34 ms (120 frames a second) and within 16.7 ms; the largest size
-with at least 95 % of frames within 8.34 ms becomes the default (D11);
-OpenGL ES 3.x and desktop 4.6 on Zink are compared and the faster is the
-default; the stub crossing count per frame is recorded.
+within 8.34 ms (120 frames a second) and within 16.7 ms, and for GPU and
+CPU time per frame; the largest size with at least 95 % of frames within
+8.34 ms becomes the default (D11); if none holds it, the limit found
+chooses the lever (D12); OpenGL ES 3.x and desktop 4.6 on Zink are
+compared and the faster is the default; the stub crossing count per frame
+is recorded.
 
 ### M7. 120 Hz
 
 `attribute3` already requests high frame rate (M2). Done when: the title
 presents at 119.88 Hz on a 120 Hz TV with the frame rate setting raised,
-and falls back to 59.94 Hz on a 60 Hz TV without a setting change.
+and falls back to 59.94 Hz on a 60 Hz TV without a setting change. If M6
+chose frame generation (D12): generated frames only in play, never in
+menus; the HUD drawn over each generated frame from the newest real one;
+the latency added measured against real 120 fps at a lower size.
 
 ### M8. Network
 
@@ -517,9 +568,9 @@ in the title folder.
 
 ## Not planned
 
-Trophies, the PS5 Activity cards, PS5 cloud saves, HDR, frame generation,
-a native AGC renderer, a PKG release (the title folder is installed as other
-homebrew titles are), and Bink movies (the game skips them on every port).
+Trophies, the PS5 Activity cards, PS5 cloud saves, HDR, a native AGC
+renderer, a PKG release (the title folder is installed as other homebrew
+titles are), and Bink movies (the game skips them on every port).
 
 ## Questions for the owner
 

@@ -184,3 +184,24 @@ surface on the display mode of the window's size and presents to it.
 - With the swapchain missing, `eglSwapBuffers` still returned `EGL_TRUE`
   and frames ran at 20,000 a second (run8, run9); the probe now requires
   the display's pace (a mean interval of 7 ms or more) for a pass.
+
+## 2026-10-31: the game's own resolution (the owner's disc image, Linux)
+
+The owner's disc image, `Halo - Combat Evolved (USA) (Rev 2).xiso.iso`
+(3,625,713,664 bytes, in `/data/opence` on .41), copied to `assets/`
+(ignored by git) and its `maps` folder read out: 24 maps, 1.8 GB. Nothing
+of it is in the repository; only these counts are.
+
+- The Xbox drew 640x480; the HUD and menus are laid out on its 480 lines
+  (`port/linux/README.md`: `display.resolution_scaling = "original"`).
+- Bitmaps, read with `tools/hud_assets.py`'s Xbox map reader: 3,751 (tag,
+  bitmap) pairs across the maps, 3,694 2D, 51 cube maps, 6 3D. By the
+  longer side: 32 or less 9.0 %, 64 16.3 %, 128 27.6 %, 256 35.6 %, 512
+  9.5 %, 1024 73 bitmaps, 2048 2. The median is 128 in every map but
+  `ui.map` (256). The largest are the Halo ring's 2048x128 strip, menu
+  backgrounds and banners (1024x512, 1024x256), and some sky and decal
+  strips (1024x128).
+
+Consequence: at 3840x2160 a typical wall's 128- or 256-texel texture spans
+hundreds of pixels; more resolution sharpens edges, the HUD and text, not
+the textures (plan D11).
