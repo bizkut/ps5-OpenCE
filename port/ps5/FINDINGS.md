@@ -500,3 +500,13 @@ mode or correlate a mute transition with a particular input buffer. The
 mute button's exact AudioIn representation therefore remains unmeasured.
 Run4 ended after 366 s through `LoadExec(0)` after leaving the network host;
 the runner returned 3 because it did not see `debug.exit_after`.
+
+Run5 (eboot SHA-256
+`0d690640da6120da522bd10702682c511537915c4a834f87f35cfcff32556ac1`, the
+release candidate's eboot: the restyled backends, the users already signed
+in taken at start with `sceUserServiceGetLoginUserIdList`): both users
+signed in on the console, 486509363 and 486509364, got a pad; the window at
+3840x2160, the first frame 2118.4 ms after it; then 1194 and 1192 frames in
+10-second windows (8.377 and 8.395 ms mean); AudioOut without underrun or
+error; `debug.exit_after` and `LoadExec(0)` after 40 s, no fatal signal.
+Split screen itself was not played.
