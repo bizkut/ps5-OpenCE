@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import ps5_deps
+import ps5_licenses
 
 MODULE_SDK = "0x02000009"
 COMPANION_SDK = "0x08050001"
@@ -243,6 +244,9 @@ def main() -> None:
     else:
         icon = TITLE_ICON
         toolchain.stage(args.build / "eboot.elf", args.folder, args.param, icon, [])
+        (args.folder / "certs").mkdir()
+        shutil.copyfile("port/third_party/cacert/cacert.pem", args.folder / "certs/cacert.pem")
+        ps5_licenses.stage(args.folder / "LICENSES")
 
 
 if __name__ == "__main__":

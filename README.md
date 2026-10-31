@@ -63,8 +63,11 @@ your own Xbox disc image of Halo: Combat Evolved.
    (`config.toml`), saved games, `custom_maps` and `mods` go there too.
 5. Start OpenCE from the home screen.
 
-The PS5 build is built from this repository with `python tools/ps5_deps.py`,
-`python tools/ps5_mesa.py`, `python configure.py` and `ninja ps5`
+If `maps/ui.map` is missing, OpenCE shows a system notification with the
+maps folder and exits. Copy the maps there before starting it again.
+
+The PS5 release build is built from this repository with `python tools/ps5_deps.py`,
+`python tools/ps5_mesa.py`, `python configure.py --portable --release` and `ninja ps5`
 (`build/ps5/title/PPSA99117`); the plan has the details.
 
 <img width="1284" height="1007" alt="The game running on Windows" src="https://github.com/user-attachments/assets/0a4412e1-f6d3-48ed-8e17-0a374c2122f1" />

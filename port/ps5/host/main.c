@@ -19,6 +19,7 @@
 #endif
 
 int sceSystemServiceLoadExec(const char *, const char *const *);
+int sceKernelSendNotificationRequest(int, void *, size_t, int);
 extern char **environ;
 extern const unsigned char halo_guest_image[], halo_guest_image_end[];
 void host_syscall_watchdog_start(unsigned seconds);
@@ -199,6 +200,22 @@ int main(void)
 	{
 		fputs(first, log_file);
 		fflush(log_file);
+	}
+	{
+		struct { char reserved[45]; char message[3075]; } notification = {0};
+		int result;
+		snprintf(path, sizeof(path), "%s/maps/ui.map", getenv("HALO_DATA_ROOT"));
+		if (access(path, R_OK) != 0)
+		{
+			snprintf(notification.message, sizeof(notification.message),
+				"OpenCE: maps missing. Copy your maps to %.2900s/maps.",
+				getenv("HALO_DATA_ROOT"));
+			host_logf(HOST_LOG_ERROR, "opence: %s (cannot read %s)",
+				notification.message, path);
+			result = sceKernelSendNotificationRequest(0, &notification, sizeof(notification), 0);
+			host_logf(HOST_LOG_INFO, "opence: missing maps notification result %d", result);
+			host_exit(1);
+		}
 	}
 	host_memory_reserve_early();
 	if (host_memory_fixed_unavailable())

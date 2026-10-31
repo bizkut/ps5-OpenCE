@@ -531,3 +531,33 @@ loaded, and 15 ten-second windows: 9 at the display's pace (8.342 ms mean,
 longest 8.4-8.9 ms), the others holding first-draw stalls of 18 ms to
 0.92 s (longest 918.958 ms, as a map loaded); AudioOut 1875-1876 periods
 per window, no underrun and no error.
+
+## 2026-10-31: Release preparation
+
+An initial payload check reported `ok running app=40982 title=PPSA99117`;
+it was left alone. A later check reported `ok idle`, before deployment.
+Run artifacts, including the signed eboot and matching ELF snapshots, are in
+`build/ps5/evidence/release/run1` through `run4`; the eboot SHA-256 is
+`9a11cbf3613a3e80801ce872e8d79fd8b3667fc20b5236054511b69472f67b23`.
+
+- Run1, no env file and no maps: `maps missing. Copy your maps to
+  /data/opence/maps`, `missing maps notification result 0`, and `LoadExec
+  exit (1)`. The notification request uses the ABI of the SDK's
+  `samples/hello_world/main.c`; this records its return value, not visual
+  confirmation on the television.
+- The 24 maps in `assets/maps/` were copied to `/data/opence/maps/`; the disc
+  image was left in place. Run2, without an env file, logged `settings:
+  wrote the defaults to /data/opence/config.toml`, `data root: /data/opence`,
+  `save root: /data/opence/save`, menu tags loaded and first frame presented.
+  FTP showed `save/z/savegame.bin` and the save directories.
+- Run3, again without an env file, logged `settings: /data/opence/config.toml`,
+  the same save root, menu tags and a first frame. Config's FTP modification
+  time remained `20261031115802`. Runs 2 and 3 were stopped after the
+  10-second swap-interval report by the runner's kill for its own title;
+  save-file readback was not independently logged.
+- Run4 used a temporary env file to open the server-browser screen and exit
+  after 90 seconds. It logged `server browser:
+  https://master.opencommunityedition.com lists 37 servers` three times,
+  then `exiting after debug.exit_after` and `LoadExec exit (0)`. The env
+  file was removed afterwards; the final payload check reported `ok idle`.
+

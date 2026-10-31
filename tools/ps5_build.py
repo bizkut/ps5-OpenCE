@@ -8,6 +8,7 @@ from .android_build import LINUX_DIR, SDL_DIR, fetch_third_party, generate_guest
 from .ps5_host_build import generate_ps5_linux_host
 from .ps5_host_build import ANDROID, LINUX, MBED, TOML
 from .linux_build import MINIUPNPC_DEFINES, MINIUPNPC_DIR, miniupnpc_sources
+from .ps5_licenses import LICENSES
 
 BUILD = Path("build/ps5")
 # the title's icon (tools/ps5_title.py's TITLE_ICON)
@@ -95,7 +96,12 @@ def generate_ps5_title(n, image, host_table_c):
     n.build(module, "ps5_title_link", objects,
             implicit=["tools/ps5_title.py", "tools/ps5_deps.py", "port/ps5/stubs/audioin.c", *archives])
     outputs = [folder / "eboot.bin", folder / "sce_module/libc.prx",
-               folder / "sce_sys/param.json", folder / "sce_sys/icon0.png"]
-    n.build(outputs, "ps5_title_stage", module, implicit=["tools/ps5_title.py", "port/ps5/sce_sys/param.json",
-                                                          TITLE_ICON])
+               folder / "sce_sys/param.json", folder / "sce_sys/icon0.png",
+               folder / "certs/cacert.pem", folder / "LICENSES/NOTICE.txt",
+               folder / "LICENSES/Mesa-source-notices.txt", folder / "LICENSES/SDK-source-notices.txt",
+               *[folder / "LICENSES" / name for name in LICENSES]]
+    n.build(outputs, "ps5_title_stage", module,
+            implicit=["tools/ps5_title.py", "tools/ps5_licenses.py", "port/ps5/sce_sys/param.json",
+                      TITLE_ICON, "port/third_party/cacert/cacert.pem", *LICENSES.values(),
+                      "build/ps5/mesa/src/.opence-source", "build/ps5/deps/src/payload_sdk/.opence-commit"])
     return outputs

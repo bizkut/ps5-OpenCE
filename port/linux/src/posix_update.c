@@ -81,6 +81,9 @@ static int ps5_net_connect(mbedtls_net_context *net, const char *host, const cha
 /* where distributions keep their certificate authorities */
 static const char *const certificate_bundles[] =
 {
+#ifdef __PROSPERO__
+	"/app0/certs/cacert.pem",
+#endif
 	"/etc/ssl/certs/ca-certificates.crt", /* Debian, Ubuntu, Arch, Gentoo */
 	"/etc/pki/tls/certs/ca-bundle.crt", /* Fedora, RHEL */
 	"/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",
