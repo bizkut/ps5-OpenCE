@@ -41,17 +41,7 @@ int host_linux_stat_syscall(long number, long long a, long long b, long long c, 
 #endif
 
 /* the guest's structures */
-struct guest_timespec
-{
-	int32_t seconds;
-	int32_t nanoseconds;
-};
-
-struct guest_iovec
-{
-	uint32_t base;
-	uint32_t length;
-};
+#include "host_guest_io.h"
 
 #define GUEST(type, value) ((type)(uintptr_t)(uint32_t)(value))
 

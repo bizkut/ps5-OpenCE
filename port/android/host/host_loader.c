@@ -13,6 +13,9 @@ host functions of the same names.
 #include <elf.h>
 #include <string.h>
 #include <sys/mman.h>
+#ifdef __PROSPERO__
+#include <ps5platform/kernel.h>
+#endif
 
 #ifdef HALO_X32_GUEST
 #define Elf64_Ehdr Elf32_Ehdr
@@ -69,8 +72,13 @@ int host_load_image(const void *file, size_t size)
 	}
 	if (host_memory_initialize((uint32_t)low, (uint32_t)(high - low)) != 0)
 		return -1;
+#ifdef __PROSPERO__
+	if (host_guest_mmap(low, high - low, PROT_READ | PROT_WRITE, 0x32, -1, 0) != (long)low)
+		return -1;
+#else
 	if (mmap((void *)low, high - low, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0) != (void *)low)
 		return -1;
+#endif
 	for (index = 0; index < elf->e_phnum; index++)
 	{
 		const Elf64_Phdr *segment = &segments[index];
@@ -121,11 +129,22 @@ int host_load_image(const void *file, size_t size)
 	for (index = 0; index < elf->e_phnum; index++)
 	{
 		const Elf64_Phdr *segment = &segments[index];
+#ifdef __PROSPERO__
+		uint64_t start = segment->p_vaddr & ~0x3fffULL;
+		uint64_t end = (segment->p_vaddr + segment->p_memsz + 0x3fff) & ~0x3fffULL;
+#else
 		uint64_t start = segment->p_vaddr & ~0xfffULL;
 		uint64_t end = (segment->p_vaddr + segment->p_memsz + 0xfff) & ~0xfffULL;
+#endif
 
+#ifdef __PROSPERO__
+		if (segment->p_type == PT_LOAD && (segment->p_flags & PF_X) &&
+			sceKernelMprotect((void *)start, end - start, PS5_KERNEL_PROT_CPU_READ | PS5_KERNEL_PROT_CPU_EXEC))
+			return -1;
+#else
 		if (segment->p_type == PT_LOAD && (segment->p_flags & PF_X))
 			mprotect((void *)start, end - start, PROT_READ | PROT_EXEC);
+#endif
 	}
 	__builtin___clear_cache((char *)low, (char *)high);
 	return 0;

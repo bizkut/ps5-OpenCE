@@ -60,10 +60,9 @@ def generate_ps5_linux_host(n, sln, image: Path, host_table_c: Path) -> Path:
             extra = f" -I{MBED / 'include'} -I{MBED / 'library'} -DMBEDTLS_THREADING_C -DMBEDTLS_THREADING_PTHREAD"
         n.build(obj, "ps5_linux_host_cc", source, order_only=[libsdl], variables={"cflags": flags + extra})
         objects.append(obj)
-    # the guest image, linked in (port/ps5/host/linux/guest_image.S): the executable then runs on its own
-    # wherever it is copied, as the desktop build's does
+    # Embed the same guest image used by the PS5 title.
     image_object = BUILD / "obj" / "guest_image.o"
-    n.build(image_object, "ps5_linux_host_cc", Path("port/ps5/host/linux/guest_image.S"), implicit=[image],
+    n.build(image_object, "ps5_linux_host_cc", Path("port/ps5/host/guest_image.S"), implicit=[image],
             variables={"cflags": f"-Wa,-I{image.parent}"})
     objects.append(image_object)
     # SDL beside the executable, as the desktop build's (build/linux/libSDL3.so.0): tools that copy the game

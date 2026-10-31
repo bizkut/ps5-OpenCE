@@ -253,7 +253,7 @@ def android_configure_inputs() -> List[Path]:
 
 def generate_guest_build(n: Writer, sln: Any, config: Dict[str, Any], *, name: str, build: Path,
                          guest_cc: str, sysroot_include: Path, gl_include: Path,
-                         arch: Path, abi_flags: List[str]) -> tuple[Path, Path]:
+                         arch: Path, abi_flags: List[str], musl_extra_flags: tuple[str, ...] = ()) -> tuple[Path, Path]:
     """Emit the shared ILP32 guest image and return its image and host table."""
     x32 = name == "ps5"
     label = name.upper()
@@ -388,7 +388,7 @@ def generate_guest_build(n: Writer, sln: Any, config: Dict[str, Any], *, name: s
 
     # musl
     musl_cflags = " ".join([
-        guest_abi, "-std=c99", "-ffreestanding", "-fno-common", "-D_XOPEN_SOURCE=700", "-w",
+        guest_abi, *musl_extra_flags, "-std=c99", "-ffreestanding", "-fno-common", "-D_XOPEN_SOURCE=700", "-w",
         *(f"-I{directory}" for directory in arch_dirs), f"-I{MUSL_DIR}/arch/generic", f"-I{libc_internal}",
         *([] if x32 else [f"-I{PORT_DIR}/guest/libc/src_include"]), f"-I{MUSL_DIR}/src/include",
         f"-I{MUSL_DIR}/src/internal", f"-I{libc_include}", f"-I{MUSL_DIR}/include",

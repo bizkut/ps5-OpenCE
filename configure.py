@@ -192,6 +192,8 @@ n.build(
         *linux_configure_inputs(),
         *android_configure_inputs(),
         Path("tools/ps5_build.py"),
+        Path("tools/ps5_host_build.py"),
+        Path("port/ps5/host"),
         *windows_configure_inputs(),
         *web_configure_inputs(),
     ],

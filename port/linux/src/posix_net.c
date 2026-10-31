@@ -30,6 +30,75 @@ with the host ABI.
 
 #include "posix.h"
 
+#ifdef __PROSPERO__
+#include <pthread.h>
+#include <stdint.h>
+int sceNetPoolCreate(const char *, int, int);
+int sceNetPoolDestroy(int);
+int sceNetResolverCreate(const char *, int, int);
+int sceNetResolverDestroy(int);
+int sceNetResolverStartNtoa(int, const char *, uint32_t *, int, int, int);
+int sceNetCtlInit(void);
+int sceNetCtlGetInfo(int, void *);
+static pthread_once_t random_once = PTHREAD_ONCE_INIT;
+static int random_fd = -1;
+static int random_logged;
+
+static void ps5_random_open(void)
+{
+	/* The PS5 title uses /dev/urandom (SavageWindRecomp ps5/title/import_ui.c:95). */
+	random_fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+}
+
+int host_ps5_random_bytes(void *buffer, size_t size)
+{
+	unsigned char *cursor = buffer;
+	size_t requested = size;
+
+	pthread_once(&random_once, ps5_random_open);
+	if (random_fd < 0)
+		return -1;
+	while (size)
+	{
+		ssize_t count = read(random_fd, cursor, size);
+		if (count < 0 && errno == EINTR)
+			continue;
+		if (count <= 0)
+			return -1;
+		cursor += count;
+		size -= (size_t)count;
+	}
+	if (requested && __sync_bool_compare_and_swap(&random_logged, 0, 1))
+		fprintf(stderr, "opence: /dev/urandom read %zu bytes\n", requested);
+	return 0;
+}
+
+/* The guest uses Linux sockaddr's 16-bit family; the title uses BSD's
+length byte followed by an 8-bit family. The remaining bytes are shared. */
+static const void *ps5_sockaddr_in(const void *address, int length, struct sockaddr_storage *storage)
+{
+	if (!address || length < 2 || (size_t)length > sizeof(*storage))
+		return address;
+	memcpy(storage, address, (size_t)length);
+	((unsigned char *)storage)[1] = ((const unsigned char *)address)[0];
+	((unsigned char *)storage)[0] = (unsigned char)length;
+	return storage;
+}
+
+static void ps5_sockaddr_out(void *address, int capacity, int length)
+{
+	if (address && capacity >= 2 && length >= 2)
+	{
+		unsigned char *bytes = address;
+		bytes[0] = bytes[1];
+		bytes[1] = 0;
+	}
+}
+
+static pthread_once_t netctl_once = PTHREAD_ONCE_INIT;
+static void ps5_netctl_init(void) { sceNetCtlInit(); }
+#endif
+
 /* Winsock error codes (winsockx.h) */
 #define WSAEINTR 10004
 #define WSAEBADF 10009
@@ -134,7 +203,18 @@ int posix_socket_last_error(void)
 
 int posix_socket(int family, int type, int protocol)
 {
+#ifdef __PROSPERO__
+	int result = socket(family, type | SOCK_CLOEXEC, protocol);
+	int error = errno;
+	static int reported;
+	if (result < 0 && __sync_bool_compare_and_swap(&reported, 0, 1)) {
+		fprintf(stderr, "opence: socket(%d,%#x,%d) failed: errno %d\n", family, type | SOCK_CLOEXEC, protocol, error);
+		errno = error;
+	}
+	return succeed(result);
+#else
 	return succeed(socket(family, type | SOCK_CLOEXEC, protocol));
+#endif
 }
 
 int posix_socket_close(int socket)
@@ -144,7 +224,24 @@ int posix_socket_close(int socket)
 
 int posix_socket_bind(int socket, const void *address, int address_length)
 {
+#ifdef __PROSPERO__
+	struct sockaddr_storage storage;
+	address = ps5_sockaddr_in(address, address_length, &storage);
+#endif
+#ifdef __PROSPERO__
+	{
+		int result = bind(socket, address, (socklen_t)address_length);
+		int error = errno;
+		static int reported;
+		if (result < 0 && __sync_bool_compare_and_swap(&reported, 0, 1)) {
+			fprintf(stderr, "opence: bind(%d) failed: errno %d\n", socket, error);
+			errno = error;
+		}
+		return succeed(result);
+	}
+#else
 	return succeed(bind(socket, address, (socklen_t)address_length));
+#endif
 }
 
 int posix_socket_connect(int socket, const void *address, int address_length)
@@ -155,6 +252,10 @@ int posix_socket_connect(int socket, const void *address, int address_length)
 	transport_endpoint_winsock.c); as WSAEINPROGRESS it gave up at once,
 	and every system link join failed, a split screen game's join of its
 	own host included. */
+#ifdef __PROSPERO__
+	struct sockaddr_storage storage;
+	address = ps5_sockaddr_in(address, address_length, &storage);
+#endif
 	int result = connect(socket, address, (socklen_t)address_length);
 
 	if (result < 0 && errno == EINPROGRESS)
@@ -173,7 +274,17 @@ int posix_socket_listen(int socket, int backlog)
 int posix_socket_accept(int socket, void *address, int *address_length)
 {
 	socklen_t length = address_length ? (socklen_t)*address_length : 0;
+#ifdef __PROSPERO__
+	int result = accept(socket, address, address_length ? &length : NULL);
+	if (result >= 0)
+		fcntl(result, F_SETFD, FD_CLOEXEC);
+#else
 	int result = accept4(socket, address, address_length ? &length : NULL, SOCK_CLOEXEC);
+#endif
+#ifdef __PROSPERO__
+	if (result >= 0 && address_length)
+		ps5_sockaddr_out(address, *address_length, (int)length);
+#endif
 
 	if (address_length)
 		*address_length = (int)length;
@@ -188,6 +299,10 @@ int posix_socket_send(int socket, const void *buffer, int length, int flags)
 int posix_socket_sendto(int socket, const void *buffer, int length, int flags,
 	const void *address, int address_length)
 {
+#ifdef __PROSPERO__
+	struct sockaddr_storage storage;
+	address = ps5_sockaddr_in(address, address_length, &storage);
+#endif
 	return succeed((int)sendto(socket, buffer, (size_t)length, flags | MSG_NOSIGNAL,
 		address, (socklen_t)address_length));
 }
@@ -212,6 +327,10 @@ int posix_socket_recvfrom(int socket, void *buffer, int length, int flags,
 	message.msg_iov = &vector;
 	message.msg_iovlen = 1;
 	result = (int)recvmsg(socket, &message, flags);
+#ifdef __PROSPERO__
+	if (result >= 0 && address_length)
+		ps5_sockaddr_out(address, *address_length, (int)message.msg_namelen);
+#endif
 	if (address_length)
 		*address_length = (int)message.msg_namelen;
 	/* a datagram larger than the buffer: both give its start, but Winsock
@@ -231,12 +350,19 @@ int posix_socket_shutdown(int socket, int how)
 
 int posix_socket_set_nonblocking(int socket, int nonblocking)
 {
+#ifdef __PROSPERO__
+	/* Titles reject F_SETFL and FIONBIO; SO_NBIO made an empty UDP recv
+	   return EAGAIN on the console (M2 run15). */
+	int value = nonblocking != 0;
+	return succeed(setsockopt(socket, SOL_SOCKET, 0x1200, &value, sizeof(value)));
+#else
 	int flags = fcntl(socket, F_GETFL);
 
 	if (flags < 0)
 		return fail();
 	flags = nonblocking ? (flags | O_NONBLOCK) : (flags & ~O_NONBLOCK);
 	return succeed(fcntl(socket, F_SETFL, flags));
+#endif
 }
 
 int posix_socket_set_nodelay(int socket)
@@ -313,6 +439,11 @@ int posix_socket_getsockname(int socket, void *address, int *address_length)
 {
 	socklen_t length = (socklen_t)*address_length;
 	int result = getsockname(socket, address, &length);
+#ifdef __PROSPERO__
+	if (result < 0) { int error = errno; fprintf(stderr, "opence: getsockname failed: errno %d\n", error); errno = error; }
+	if (result == 0)
+		ps5_sockaddr_out(address, *address_length, (int)length);
+#endif
 
 	*address_length = (int)length;
 	return succeed(result);
@@ -322,6 +453,10 @@ int posix_socket_getpeername(int socket, void *address, int *address_length)
 {
 	socklen_t length = (socklen_t)*address_length;
 	int result = getpeername(socket, address, &length);
+#ifdef __PROSPERO__
+	if (result == 0)
+		ps5_sockaddr_out(address, *address_length, (int)length);
+#endif
 
 	*address_length = (int)length;
 	return succeed(result);
@@ -434,6 +569,7 @@ int posix_socket_select(int *read, int *read_count, int *write, int *write_count
 	return result;
 }
 
+#ifndef __PROSPERO__
 /* the first IPv4 address of an interface that is up, running, not
 loopback and has these flags; or 0 */
 static posix_ulong interface_address(unsigned int flags)
@@ -461,9 +597,19 @@ static posix_ulong interface_address(unsigned int flags)
 	freeifaddrs(addresses);
 	return result;
 }
+#endif
 
 posix_ulong posix_local_ipv4_address(void)
 {
+#ifdef __PROSPERO__
+	/* NetCtl exposes the configured address even without a default route. */
+	union { char ip_address[16]; char name[256]; } info = {{0}};
+	struct in_addr address;
+	pthread_once(&netctl_once, ps5_netctl_init);
+	if (sceNetCtlGetInfo(14, &info) != 0 || inet_pton(AF_INET, info.ip_address, &address) != 1)
+		return 0;
+	return address.s_addr;
+#else
 	struct sockaddr_in route;
 	socklen_t length = sizeof(route);
 	posix_ulong result = 0;
@@ -498,10 +644,18 @@ posix_ulong posix_local_ipv4_address(void)
 	/* no route out (a network without the internet): the first interface
 	that is up, running and not loopback */
 	return result ? result : interface_address(0);
+#endif
 }
 
 void posix_random_bytes(void *buffer, posix_ulong size)
 {
+#ifdef __PROSPERO__
+	if (host_ps5_random_bytes(buffer, size) != 0)
+	{
+		fputs("no random numbers from the system: cannot continue\n", stderr);
+		abort();
+	}
+#else
 	unsigned char *cursor = buffer;
 
 	while (size)
@@ -540,10 +694,31 @@ void posix_random_bytes(void *buffer, posix_ulong size)
 		fputs("no random numbers from the system: cannot continue\n", stderr);
 		abort();
 	}
+#endif
 }
 
 posix_ulong posix_resolve_ipv4(const char *host)
 {
+#ifdef __PROSPERO__
+	uint32_t address = 0;
+	int pool, resolver;
+	struct in_addr numeric;
+
+	if (inet_pton(AF_INET, host, &numeric) == 1)
+		return numeric.s_addr;
+	pool = sceNetPoolCreate("opence_dns", 0x4000, 0);
+	if (pool < 0)
+		return 0;
+	resolver = sceNetResolverCreate("opence_dns", pool, 0);
+	if (resolver >= 0)
+	{
+		if (sceNetResolverStartNtoa(resolver, host, &address, 0, 0, 0) < 0)
+			address = 0;
+		sceNetResolverDestroy(resolver);
+	}
+	sceNetPoolDestroy(pool);
+	return address;
+#else
 	struct addrinfo hints, *results;
 	posix_ulong address = 0;
 
@@ -556,6 +731,7 @@ posix_ulong posix_resolve_ipv4(const char *host)
 		address = ((struct sockaddr_in *)results->ai_addr)->sin_addr.s_addr;
 	freeaddrinfo(results);
 	return address;
+#endif
 }
 
 /* ---------- the process and the desktop */
@@ -658,7 +834,7 @@ int posix_user_secret(unsigned char *secret, int size)
 #endif
 }
 
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) && !defined(__PROSPERO__)
 /* runs a program with its arguments and waits for it; its exit status, or -1 */
 static int run_program(char *const arguments[])
 {
@@ -676,7 +852,7 @@ static int run_program(char *const arguments[])
 
 int posix_register_url_scheme(const char *scheme, const char *description)
 {
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__PROSPERO__)
 	(void)scheme;
 	(void)description;
 	return 0;
@@ -740,7 +916,7 @@ int posix_register_url_scheme(const char *scheme, const char *description)
 
 int posix_discord_connect(void)
 {
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__PROSPERO__)
 	return -1;
 #else
 	/* where Discord (and its Flatpak and Snap packages) put discord-ipc-N */

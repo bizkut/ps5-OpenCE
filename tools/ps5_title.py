@@ -17,6 +17,8 @@ out as a title folder, with the Forever stack's tools (tools/ps5_deps.py):
   sce_sys/icon0.png.
 """
 
+import argparse
+import hashlib
 import os
 import shutil
 import struct
@@ -192,3 +194,42 @@ def plain_icon(path: Path, rgb: Tuple[int, int, int]) -> Path:
     path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
                      + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
     return path
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Build and stage a PS5 title")
+    commands = parser.add_subparsers(dest="command", required=True)
+    compile_parser = commands.add_parser("compile")
+    compile_parser.add_argument("source", type=Path)
+    compile_parser.add_argument("output", type=Path)
+    compile_parser.add_argument("flags", nargs=argparse.REMAINDER)
+    link_parser = commands.add_parser("link")
+    link_parser.add_argument("build", type=Path)
+    link_parser.add_argument("objects", nargs="+", type=Path)
+    stage_parser = commands.add_parser("stage")
+    stage_parser.add_argument("build", type=Path)
+    stage_parser.add_argument("folder", type=Path)
+    stage_parser.add_argument("param", type=Path)
+    identity_parser = commands.add_parser("identity")
+    identity_parser.add_argument("image", type=Path)
+    identity_parser.add_argument("output", type=Path)
+    args = parser.parse_args()
+    if args.command == "identity":
+        version = subprocess.check_output(["git", "describe", "--always", "--dirty"], text=True).strip()
+        digest = hashlib.sha256(args.image.read_bytes()).hexdigest()[:12]
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(f'#define OPENCE_BUILD_VERSION "{version}"\n'
+                               f'#define OPENCE_IMAGE_HASH "{digest}"\n', encoding="utf-8")
+        return
+    toolchain = Toolchain()
+    if args.command == "compile":
+        toolchain.compile(args.source, args.output, args.flags)
+    elif args.command == "link":
+        toolchain.link(args.objects, args.build)
+    else:
+        icon = plain_icon(args.build / "icon0.png", (0x3a, 0x5f, 0x2b))
+        toolchain.stage(args.build / "eboot.elf", args.folder, args.param, icon, [])
+
+
+if __name__ == "__main__":
+    main()

@@ -33,6 +33,9 @@ C heap there, do not run.
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#ifdef HALO_GUEST
+#include <stdlib.h>
+#endif
 
 #ifdef HALO_WEB
 /* the memory's size: whether it covers the window */
@@ -80,7 +83,24 @@ static void contiguous_arena_reserve(void)
 
 	if (result == wanted)
 	{
+#ifdef HALO_GUEST
+		const char *floor_text = getenv("HALO_WINDOW_FLOOR");
+#endif
 		arena_reserved = TRUE;
+#ifdef HALO_GUEST
+		if (floor_text && *floor_text)
+		{
+			unsigned long floor = strtoul(floor_text, NULL, 0);
+			unsigned long page, count;
+
+			if (floor > PLATFORM_CONTIGUOUS_BASE && floor <= PLATFORM_CONTIGUOUS_BASE + PLATFORM_CONTIGUOUS_SIZE)
+			{
+				count = (floor - PLATFORM_CONTIGUOUS_BASE + PAGE_SIZE_BYTES - 1) / PAGE_SIZE_BYTES;
+				for (page = 0; page < count; page++)
+					page_protection[page] = PAGE_NOACCESS;
+			}
+		}
+#endif
 	}
 	else
 	{

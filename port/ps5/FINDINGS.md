@@ -362,3 +362,61 @@ Mesa 25.2.8 llvmpipe, Xvfb.
 
 Not done: `tools/harness` against x32 (as guest images), and a
 `tools/guest_layout_check.py` in place of the hand comparison.
+
+## 2026-10-31: M2 on .41: the title runs the x32 guest (run1-run22)
+
+`ninja ps5` (`build/ps5/title/PPSA99117`), no Mesa: the game windowless.
+`build/ps5/evidence/m2/runN.klog`; from run4 each run's eboot, host ELF and
+guest ELF are kept in `runN/`. The env file `/app0/opence-env.txt` sets the
+guest's environment; the maps are in `/data/opence-dev/maps` (copied over
+FTP: the 13 multiplayer maps and `ui.map`).
+
+- Start: the first klog line names the build and the embedded image
+  (`opence: PPSA99117 <describe> image <sha256 prefix>`); the host reserves
+  `[0x7c000000, 0x80000000)` and the window `[0x80120000, 0xA0000000)`,
+  copies the image to `0x7c000000`, makes its code executable and runs the
+  game's start-up (every run from run2).
+- Randomness: `libSceRandom.sprx` loaded (status 0) but its function was
+  not found by name (run2) nor by NID (`0x80020003`, run3), and a direct
+  import of `sceRandomGetRandomNumber`, listed as NEEDED, was still address
+  0 when called (run4). `/dev/urandom` gave 32 bytes at once (run5, every
+  run since).
+- Direct memory is not zero when allocated: musl's mallocng found its guard
+  byte (in a mapping's tail beyond the requested size) nonzero and stopped
+  (run5, SIGBUS at its `hlt`). Clearing every new 64 KiB unit and each
+  mapping's whole tail removed it (run6).
+- `debug.exit_after` is checked where SDL's events are pumped, which happens
+  only once SDL has started: with `host_sdl_init` failing, the game never
+  quit (run6-run8, 300 s, 60 s, 30 s), and the Linux host did the same
+  without a display, while it quit after 5.3 s with one. The PS5 host's
+  `host_sdl_init` now succeeds and window creation fails, so the game runs
+  windowless and quits on time (run9).
+- Sockets: on a UDP socket, `fcntl(F_SETFL, O_NONBLOCK)` and
+  `ioctl(FIONBIO)` fail with `EACCES`, `fcntl(F_SETFD, FD_CLOEXEC)` with
+  `EINVAL`; `setsockopt(SOL_SOCKET, 0x1200 /* SO_NBIO */)` succeeds and a
+  `recv` with nothing pending then returns `EAGAIN` at once (run15). With
+  that, internet play's socket opens and both STUN servers (Google's,
+  Cloudflare's) answer with the console's public address (run16).
+- A hosted game's default playlist loads `carousel.map` before the network
+  test chooses its map; without it the game shows its damaged-media screen
+  (run17-run18, found by sampling the main thread and tracing map opens).
+- Acceptance, one eboot (`c0bfa136…`, image `4171b872b7a2`): run19 hosted
+  slayer on bloodgulch windowless, a player line every 30 ticks from 30 to
+  1230, and left through `debug.exit_after` and
+  `sceSystemServiceLoadExec("exit")` after 60.7 s; run20-run22, the
+  windowless start-up with `HALO_EXIT_AFTER=5`, each left the same way after
+  5.8 s. No fatal signal in any of the four klogs.
+- The host's diagnostics, on only when the env file sets
+  `OPENCE_HOST_WATCHDOG=<seconds>`: each guest thread's current system call
+  and how long it has been in it, futex waits and the wakes their address
+  received, samples of the main thread's guest stack (`SIGUSR1`, frame
+  pointers; the x32 guest's musl is built with frame pointers for it), and
+  the map files' opens and reads.
+
+Checked on this machine after the M2 changes: `ninja linux ps5_linux_host`
+build; the Linux host plays a hosted bloodgulch game for 60 s under Xvfb
+and exits 0; `tools/stagekit/tests` pass with the x32 build (20); every
+Android-compiled file changed preprocesses as before with Android's defines
+(with the headers M2 split out inlined), except `xbox_memory.c`, whose new
+code runs only when `HALO_WINDOW_FLOOR` is set, which only the PS5 host
+does.

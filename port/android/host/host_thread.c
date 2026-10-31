@@ -48,7 +48,15 @@ static void *stack_allocate(size_t size, void **mapping, size_t *mapping_size)
 	if (!base)
 		return NULL;
 	/* guard page at the bottom */
+#ifdef __PROSPERO__
+	if (host_guest_mprotect((uintptr_t)base, GUARD_SIZE, PROT_NONE))
+	{
+		host_low_unmap(base, total);
+		return NULL;
+	}
+#else
 	mprotect(base, GUARD_SIZE, PROT_NONE);
+#endif
 	*mapping = base;
 	*mapping_size = total;
 	return (char *)base + GUARD_SIZE;

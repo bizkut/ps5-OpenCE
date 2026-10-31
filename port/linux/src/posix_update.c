@@ -36,6 +36,43 @@ Built with the host's ABI, as the other posix_*.c.
 #include <sys/types.h>
 #include <unistd.h>
 
+#ifdef __PROSPERO__
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include "posix.h"
+
+/* The SDK's getaddrinfo refuses lookups; Mbed TLS otherwise uses it for
+both HTTPS and the local HTTP endpoint. */
+static int ps5_net_connect(mbedtls_net_context *net, const char *host, const char *port, int protocol)
+{
+	struct sockaddr_in address;
+	char *end;
+	long number = strtol(port, &end, 10);
+
+	if (protocol != MBEDTLS_NET_PROTO_TCP || *end || number < 1 || number > 65535)
+		return MBEDTLS_ERR_NET_UNKNOWN_HOST;
+	memset(&address, 0, sizeof(address));
+	address.sin_len = sizeof(address);
+	address.sin_family = AF_INET;
+	address.sin_port = htons((unsigned short)number);
+	address.sin_addr.s_addr = posix_resolve_ipv4(host);
+	if (!address.sin_addr.s_addr)
+		return MBEDTLS_ERR_NET_UNKNOWN_HOST;
+	net->fd = socket(AF_INET, SOCK_STREAM, 0);
+	if (net->fd < 0)
+		return MBEDTLS_ERR_NET_SOCKET_FAILED;
+	if (connect(net->fd, (struct sockaddr *)&address, sizeof(address)) != 0)
+	{
+		close(net->fd);
+		net->fd = -1;
+		return MBEDTLS_ERR_NET_CONNECT_FAILED;
+	}
+	return 0;
+}
+#define mbedtls_net_connect ps5_net_connect
+#endif
+
 #define UPDATE_USER_AGENT "halo-ce-universal-updater"
 #define MAXIMUM_REDIRECTS 8
 #define TIMEOUT_MILLISECONDS 20000
@@ -846,6 +883,11 @@ int update_make_directory(const char *path)
 
 int update_launch(const char *path)
 {
+#ifdef __PROSPERO__
+	/* A native title cannot fork and exec an updater. */
+	(void)path;
+	return 0;
+#else
 	pid_t child = fork();
 
 	if (child == 0)
@@ -862,4 +904,5 @@ int update_launch(const char *path)
 		_exit(127);
 	}
 	return child > 0;
+#endif
 }

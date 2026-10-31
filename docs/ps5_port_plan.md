@@ -1,14 +1,20 @@
 # OpenCE on the PlayStation 5: port plan
 
-Status: M0's gate passed. Written 2026-10-31 against OpenCE `da8d4556`.
-On the console (.41, `port/ps5/FINDINGS.md`): S1-S4 pass (run2), S5a
-(run6: OpenGL ES 3.2 on Zink on RADV in a plain title) and S5b (run11-13:
-Zink presenting itself on VideoOut at 119.88 Hz, at 3840x2160, 2560x1440
-and 1920x1080) pass; S7 and S8 pass (run16: sockets, `/data/opence`, the
-maps read in place from the disc image); S6's automatic checks pass
-(run17: pad, keyboard, mouse and AudioOut beside Zink at 120 fps), its
-hands-on checks wait for a person at the console. Every other claim about
-the PS5 below cites the repository that measured it.
+Status (2026-10-31): M0's gate passed, M1 and M2 done, M3 next. Written
+against OpenCE `da8d4556`. On the console (.41, `port/ps5/FINDINGS.md`):
+S1-S4 pass (run2), S5a (run6: OpenGL ES 3.2 on Zink on RADV in a plain
+title) and S5b (run11-13: Zink presenting itself on VideoOut at 119.88 Hz,
+at 3840x2160, 2560x1440 and 1920x1080) pass; S7 and S8 pass (run16:
+sockets, `/data/opence`, the maps read in place from the disc image); S6's
+automatic checks pass (run17: pad, keyboard, mouse and AudioOut beside Zink
+at 120 fps), its hands-on checks wait for a person at the console. M1 (this
+machine, no console): the x32 guest plays under a Linux host, in step with
+the i386 build in `net_compare.py`. M2 (`build/ps5/evidence/m2`): the title
+reserves the guest's memory, loads the image linked into its eboot and runs
+the game windowless on the console: a hosted bloodgulch game for 60 s and
+three timed start-ups, each leaving through `LoadExec("exit")` (run19-22).
+Every other claim about the PS5 below cites the repository that measured
+it.
 
 ## Summary
 
@@ -73,10 +79,12 @@ Forever's Wine runtime already does.
 
 ## Goals
 
-1. `python configure.py --ps5` and `ninja ps5` build a title folder
-   (`build/ps5/PPSA99117/`: `eboot.bin`, `sce_module/libc.prx`,
-   `sce_sys/param.json`, `sce_sys/icon0.png`) from this repository, with
-   pinned dependencies.
+1. `python configure.py` and `ninja ps5` build a title folder
+   (`build/ps5/title/PPSA99117/`: `eboot.bin` with the guest image in it,
+   `sce_module/libc.prx`, `sce_sys/param.json`, `sce_sys/icon0.png`) from
+   this repository, with pinned dependencies (`tools/ps5_deps.py` installs
+   them; without them configure leaves the title out, as it leaves Android
+   out without an NDK).
 2. The campaign, split screen and system link play on a PS5 with a
    DualSense, at the TV's resolution, at 60 frames per second or better.
 3. Internet play, the server browser and map sharing work as on the other
@@ -207,34 +215,58 @@ the guest thread pointer through `host_get_tp`, as the Android guest does
 `cseries.c:362`, `msvc_wide.c:185`, `posix_net.c:78,341`,
 `xbox_kernel.c:62,174`, `xnet.c:328`, `profile_trace.c:118`.
 
-**D3. The host loads the image at run time into memory it maps
-executable.** A title cannot `dlopen` or `sceKernelLoadStartModule` its own
-modules (SavageWindRecomp `ps5/FINDINGS.md:8-11`), and an ELF32 image cannot
-be linked into the ELF64 eboot. Forever's Wine runtime loads its ELF modules
-itself: direct memory mapped read-write, then `mprotect` with `PROT_EXEC`
-(`ps5-wow/ps5/probes/psmkit-wine/elf-runtime.c:337-359,630-633`). The PS5
-loader (`port/ps5/host/host_loader.c`) follows that and
-`port/android/host/host_loader.c`. The image ships in the title folder
-(`/app0/halo_guest.elf`); its SHA-256 is checked before mapping.
+**D3. The host copies the image into memory it then makes executable.** A
+title cannot `dlopen` or `sceKernelLoadStartModule` its own modules
+(SavageWindRecomp `ps5/FINDINGS.md:8-11`), and an ELF32 image cannot be
+linked into the ELF64 eboot as code. Forever's Wine runtime loads its ELF
+modules itself: direct memory mapped read-write, then `mprotect` with
+`PROT_EXEC` (`ps5-wow/ps5/probes/psmkit-wine/elf-runtime.c:337-359,630-633`);
+S2 did the same with `sceKernelMprotect`. The image is carried in the eboot
+as data (`port/ps5/host/guest_image.S`, an `.incbin` the Linux host shares),
+so the eboot and its image cannot disagree; `port/android/host/host_loader.c`
+copies its segments to `0x7c000000` and checks the header's magic and ABI
+version, and the first klog line names the build and the image's SHA-256.
 
 **D4. Guest memory is reserved with the kernel's own calls.** Anonymous
 `mmap` of large fixed ranges fails on the PS5; `sceKernelReserveVirtualRange`
 plus fixed `sceKernelAllocateDirectMemory`/`sceKernelMapDirectMemory`
 works, and pages are 16 KiB (SavageWindRecomp `ps5/FINDINGS.md:13-27`).
-`port/ps5/host/host_memory.c` keeps the Android pool logic
-(`port/android/host/host_memory.c:503-751`) and replaces `reserve()` and the
-`/proc` scans, which the PS5 lacks.
+`port/ps5/host/memory.c` reserves only ranges `sceKernelQueryMemoryProtection`
+shows empty (a fixed reservation silently replaces what is there: run1),
+backs them with direct memory in 64 KiB units as the guest maps them, and
+shares Android's pool allocator (`port/android/host/host_pool.h`); the
+`/proc` scans and Linux `mmap` flags stay Linux's. Rules the PS5's memory
+must keep for the guest:
 
-Proposed address map (M0 confirms or moves the pools):
+- Every page a guest anonymous `mmap` returns reads zero, its tail past the
+  requested size included: musl's mallocng checks a guard byte there
+  (run5's heap assertion was stale direct memory in a mapping's tail).
+- `MAP_FIXED_NOREPLACE` fails with `EEXIST` over a live guest mapping; only
+  the host's reservations may be replaced; a fixed `PROT_NONE` mapping takes
+  effect (the window's allocator frees pages that way).
+- The guest believes in 4 KiB pages (musl's compile-time `PAGESIZE`,
+  `xbox_memory.c`'s pages, the memory watch's) while the PS5 protects
+  16 KiB; the boot struct says 16 KiB. Protection changes round outward,
+  so the memory watch on the PS5 must treat a fault on a 16 KiB page as a
+  write to each watched 4 KiB page in it, or use the hash method
+  (`host_watch_hash.c`) until M3 shows it does.
+- **The window floor.** The guest reserves the whole window
+  (`xbox_memory.c`'s `mmap` of `0x80000000`, 512 MB) and hands it out top
+  down. The host grants that without touching the loader's `libc.prx` and
+  passes `HALO_WINDOW_FLOOR=0x80120000` in the guest's environment;
+  `xbox_memory.c` marks the pages below it taken. Hosts that set no floor
+  (Linux, Android) behave as before.
+
+The address map (S1, run2; the window and pools as M1 sized them):
 
 |Range|Use|
 |---|---|
-|`0x00400000`-…|the eboot (system loader; vkQuake's measured base)|
-|below `0x7c000000`, as free|guest pools: heap, guest thread stacks|
-|`0x7c000000`-`0x80000000`|guest image (64 MiB room; below 2 GB, D1)|
-|`0x80000000`-`0x80118000`|the title's `sce_module/libc.prx`, mapped there by the console's loader before `main` (run1, run2); the window's allocator treats these pages as taken|
-|`0x80120000`-`0x88000000`|Xbox contiguous memory (`platform.h:150`, `halo_android_abi.h:36-37`), from the first 64 KiB boundary above `libc.prx`; the game's fixed addresses start at `0x803A6000`|
-|`0x88000000`-`0xffffffff`, as free|guest pools|
+|`0x00400000`-…|the eboot (system loader)|
+|`0x10000000`-`0x7c000000`|guest pools: heap, guest thread stacks|
+|`0x7c000000`-`0x80000000`|guest image (64 MiB room; below 2 GB, D1; the image ends at `0x7edca000`)|
+|`0x80000000`-`0x80118000`|the title's `sce_module/libc.prx`, mapped there by the console's loader before `main` (run1, run2); below the window floor|
+|`0x80120000`-`0xA0000000`|Xbox contiguous memory (`platform.h`: 512 MB from `0x80000000`, as the desktop builds), from the first 64 KiB boundary above `libc.prx`; the game's fixed addresses start at `0x803A6000`|
+|`0xA0000000`-`0x100000000`|guest pools|
 |`0x200000000`-`0x300000000`|left free for RADV's BO window (SavageWindRecomp `ps5/FINDINGS.md:435-440`)|
 
 **D5. OpenGL is Zink on RADV, built as one Mesa.** Zink, EGL and RADV come
@@ -314,6 +346,19 @@ resolver (`sceNetResolverStartNtoa`, 0.2 s for a first lookup): libc's
 `getaddrinfo` is the platform layer's refusal in a title link. Whether
 another machine on the console's LAN receives its broadcasts is not
 measured yet (no machine of this project is on that LAN; M8 needs one).
+The PS5 seams in `port/linux/src/posix_*.c` (behind `__PROSPERO__`): the
+resolver for IPv4 lookups (miniupnpc's and HTTP's too), `sceNetCtlGetInfo`
+for the local address, `accept` for the SDK's missing `accept4`, no
+interface names, no updater launch (no `fork`/`exec`), and non-blocking
+sockets through `setsockopt(SOL_SOCKET, SO_NBIO)` (`0x1200`), since
+`fcntl(F_SETFL)` and `ioctl(FIONBIO)` give `EACCES` and `F_SETFD` `EINVAL`
+on the PS5's sockets (M2 run15).
+Random bytes (internet play's identity, DTLS) come from `/dev/urandom`,
+which a title can read (run5; Savage Wind's `ps5/title/import_ui.c:95`):
+`libSceRandom` loaded but its function was not found by name (run2-run3)
+and its direct import stayed unresolved at run time (run4), and the
+platform layer's `arc4random` is seeded from the time-stamp counter.
+HTTPS's certificate authorities on the PS5 are not settled yet (M8).
 
 **D9. The PS5 build plays with the others only if its simulation agrees.**
 The guest is compiled with `-ffp-contract=off` and the vendored musl maths,
@@ -415,14 +460,39 @@ The x32 boundary:
   path under `HALO_GUEST`; no `host_sdl_*` import was added, so the PS5 host
   implements exactly the list Android's does, less Android's own.
 
+The PS5 host (M2) is `port/ps5/host/` beside Android's files:
+
+|File|What it does|
+|---|---|
+|`main.c`|the build line in the klog, standard error to the klog, `/app0/opence-env.txt` (`NAME=VALUE` lines for the guest's environment, `ARGS=` for its arguments), the data roots (`HALO_DATA_ROOT=/data/opence`, `HALO_SAVE_ROOT`), the window floor, the guest's start, `sceSystemServiceLoadExec("exit")` at the end|
+|`memory.c`|the reservations, direct-memory backing, the guest's `mmap`/`munmap`/`mprotect`, the memory watch (D4)|
+|`syscall.c`|`host_syscall` for the PS5 (below)|
+|`sdl_ps5.c`|the `host_sdl_*` imports; in M2 no window, events, pads or audio (the game runs windowless, as the Linux host showed when SDL failed); M3 adds EGL, M4 ScePad and AudioOut (D6)|
+|`guest_image.S`|the image as data in the executable, for both hosts|
+
+Android's `host_loader.c`, `host_thread.c` compile for it with
+`__PROSPERO__` seams; the pool allocator (`host_pool.h`), the guest's
+structure layouts and the `stat` conversion (`host_guest_io.h`,
+`host_guest_syscall.h`) are shared with the Android and Linux hosts.
+
+System calls on the PS5: the guest issues asm-generic Linux system calls;
+the PS5's `host_syscall` takes those numbers directly and does each with
+the SDK's FreeBSD-like libc, converting what differs (`stat`, `dirent`
+records for `getdents64`, `O_*`/`AT_*`/`F_*` flags, clock ids, errno values,
+the legacy `getrlimit`'s 32-bit words). A title cannot issue system calls
+itself, so nothing is forwarded raw. `futex` (musl's locks, condition
+variables, joins) is emulated with hashed pthread mutex and condition
+pairs, since pthreads are proven on the console and `_umtx_op` is not.
+Calls the game does not need return `-ENOSYS`, as on Android.
+
 ### Repository changes
 
 |Path|Contents|
 |---|---|
-|`configure.py`|the `ps5_guest` and `ps5_linux_host` targets (built); `--ps5-sdk` and the `ps5` title target in M2|
-|`tools/ps5_build.py`, `tools/ps5_host_build.py`|the x32 guest's graph (through `tools/android_build.py`'s `generate_guest_build`) and the Linux host's: `build/ps5/halo_guest.elf`, `build/ps5/linux/halo-x32` with the image linked in and `libSDL3.so.0` beside it, as the desktop build's; the title's eboot, SELF and folder in M2|
+|`configure.py`|the `ps5_guest`, `ps5_linux_host` and `ps5` targets; `ps5` only when `tools/ps5_deps.py` has installed the SDK|
+|`tools/ps5_build.py`, `tools/ps5_host_build.py`, `tools/ps5_title.py`|the x32 guest's graph (through `tools/android_build.py`'s `generate_guest_build`); the Linux host's (`build/ps5/linux/halo-x32`, with `libSDL3.so.0` beside it); the title's (`build/ps5/title/PPSA99117`: host objects with the title toolchain, then `tools/ps5_title.py link` and `stage`, which Ninja calls)|
 |`tools/ps5_deps.py`, `port/ps5/deps.lock`|pinned exports and builds: SDK, Mesa (in the cached Docker image), Mbed TLS, zlib|
-|`port/ps5/host/`|`linux/` (built); the PS5's own beside it: start, paths, splash, exit, memory, EGL window, `host_ps5_input.c`, `host_ps5_audio.c` (D6)|
+|`port/ps5/host/`|the PS5 host (above) and `linux/` (the Linux host's entry point and its system call numbers)|
 |`port/ps5/patches/mesa/`|patches over the pinned Mesa export|
 |`port/ps5/sce_sys/`|`param.json` (PPSA99117, `attribute3` `0x40040`), `icon0.png` from the title art (`tools/title_assets.py`)|
 |`port/ps5/README.md`|the PS5 build, installation, the data folder, settings, finding problems (in the style of `port/android/README.md`)|
@@ -498,12 +568,40 @@ in place of the hand comparison.
 ### M2. Title shell
 
 `eboot.bin` signed, folder installed with `deploy-title-folder.py`,
-launched with `run-title.py`.
+launched with `run-title.py`. No Mesa yet: the game runs windowless.
+Console runs read `/app0/opence-env.txt`; development maps (`ui.map` and
+the 13 multiplayer maps) are in `/data/opence-dev/maps` on .41 (copied over
+FTP, which spends no title write budget), so the owner's `/data/opence`
+stays as it is until M5 reads the disc image in place.
 
-Done when: three consecutive runs log the build identity, reserve the
-guest memory, load and verify the image, reach the game's `main` and exit
-through `sceSystemServiceLoadExec("exit", NULL)`, with no `signal` in the
-klog.
+Done when: three consecutive runs with `HALO_DATA_ROOT=/data/opence-dev`,
+`HALO_NULL_RENDERER=1`, `HALO_NO_AUDIO=1` and `HALO_EXIT_AFTER=5` log the
+build identity, reserve the guest memory, load the image, log the game's
+start-up and leave through `debug.exit_after` and
+`sceSystemServiceLoadExec("exit", NULL)`, with no `signal` in the klog; and
+a run with `HALO_NETWORK_TEST=host:bloodgulch` and `HALO_EXIT_AFTER=60`
+loads the map and logs a player line each second. (A guest has no
+`--version`: it is the dedicated server's, which guests leave out.)
+
+Status (2026-10-31, `build/ps5/evidence/m2`, `port/ps5/FINDINGS.md`):
+done. Each run's eboot and ELF are kept with it from run4.
+
+|Run|Result|Cause, and what changed|
+|---|---|---|
+|run1|the guest starts; a call to address 0 in `posix_random_bytes`|`ARGS=--version` ignored (no server mode in guests); randomness through `libSceRandom`|
+|run2, run3|abort: `libSceRandom` loaded, its function not found by name (`0x80020003`)|run3 ran the old build; its host symbols are not valid (the ELF was rebuilt under it)|
+|run4|call to address 0 again|the direct import of `sceRandomGetRandomNumber` stays unresolved at run time; randomness moved to `/dev/urandom` (D8)|
+|run5|`/dev/urandom` gives 32 bytes; SIGBUS 2.9 s in, musl mallocng's guard assertion|direct memory is not zero when allocated: every new unit and every mapping's tail are now cleared (D4)|
+|run6-run8|the game loads `ui.map`'s menus, then never quits|`debug.exit_after` is checked only where SDL's events are pumped, so a failed `host_sdl_init` meant no exit (the Linux host does the same without a display): `host_sdl_init` now succeeds, the window fails|
+|run9-run11|windowless start-up, exit after 5.8 s|-|
+|run12-run16|a hosted game, no player lines: internet play's socket fails|`F_SETFL`/`FIONBIO` give `EACCES` on PS5 sockets; `SO_NBIO` (`0x1200`) works (D8)|
+|run17, run18|the damaged-media screen|the default playlist loads `carousel.map` first: every multiplayer map is now in `/data/opence-dev/maps`|
+|run19|bloodgulch hosted, a player line every second, exit after 60.7 s|acceptance|
+|run20-run22|windowless start-up, exit after 5.8 s, on run19's eboot|acceptance|
+
+The host keeps its diagnostics behind `OPENCE_HOST_WATCHDOG=<seconds>` in
+the env file: each guest thread's current system call, futex waits and
+their wakes, samples of the main thread's guest stack, map file I/O.
 
 ### M3. First frames
 
@@ -595,13 +693,15 @@ GPL-3.0-or-later) are listed in the title folder.
 
 |Risk|Effect|Mitigation|
 |---|---|---|
-|The PS5 reserves part of `0x80000000`-`0x88000000` in titles|No PS5 port by any route (the cache files fix these addresses)|S1 is the first probe, before any other work|
+|The PS5 reserves part of `0x80000000`-`0xA0000000` in titles|No PS5 port by any route (the cache files fix these addresses)|S1: only the loader's `libc.prx` at `0x80000000`-`0x80118000`, below the game's first fixed address; the window floor keeps the guest off it (D4)|
 |Executable memory is refused for a title without Forever's setup|No image loading|S2 first; Forever's Wine runtime maps loaded code with `mprotect(PROT_EXEC)`, the probe checks the same in a plain title|
 |Native Zink needs more Mesa work than the EGL platform|Late first frame|S5 before any game work; readback into a Vulkan swapchain as a stop-gap presentation|
 |The native pad backend numbers buttons or axes differently from SDL's DualSense driver, which the desktop mappings assume|Wrong controls|Numbered as SDL's driver numbers them (SavageWindRecomp `runtime/ps5/input.c:144-155`); M4 checks every button and axis by hand|
-|x32 ABI mismatches in the game's sources (prototypes, varargs)|Wrong values, rare crashes|`android_abi_check.py` for x32 in M1; Linux-hosted runs of the whole test suite|
+|x32 ABI mismatches in the game's sources (prototypes, varargs)|Wrong values, rare crashes|`android_abi_check.py` on the x32 IR (M1: none found); Linux-hosted runs of the whole test suite|
 |Direct memory pressure (RADV, Zink, the game share 12 GiB)|Allocation failures|The game needs well under 1 GiB; log `sceKernelAvailableDirectMemorySize` at start and each level|
-|x32 floating point differs from the i386 build|No cross-play|`net_compare.py` in M1 under Linux, before any console time is spent on it|
+|x32 floating point differs from the i386 build|No cross-play|`net_compare.py` in M1 under Linux: in step|
+|The guest's 4 KiB pages under the PS5's 16 KiB protection|Writes the GPU mirror misses (M3); protection changes reaching neighbouring blocks|The PS5's memory watch uses hashes until a fault on a 16 KiB page marks all four 4 KiB pages written; M3 checks `xbox_memory.c`'s protection changes against their neighbours|
+|The PS5's system calls differ from Linux's in ways the game meets only later (flags, clocks, errno, `futex` timing)|Hangs or wrong results deep in play|Each conversion written against both headers; the host can log each guest thread's current call; `net_compare.py` between a PS5 and Linux in M8|
 
 ## Not planned
 

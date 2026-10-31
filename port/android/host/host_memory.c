@@ -675,30 +675,7 @@ int host_memory_initialize(uint32_t base, uint32_t size)
 
 /* ---------- page pools */
 
-static void *pool_take(struct pool *pool, uint64_t pages)
-{
-	uint64_t run = 0, page;
-
-	if (pool->free_pages < pages)
-		return NULL;
-	for (page = 0; page < POOL_PAGES; page++)
-	{
-		if (pool->used[page])
-		{
-			run = 0;
-			continue;
-		}
-		if (++run == pages)
-		{
-			uint64_t first = page + 1 - pages;
-
-			memset(&pool->used[first], 1, pages);
-			pool->free_pages -= pages;
-			return (void *)(pool->base + first * PAGE);
-		}
-	}
-	return NULL;
-}
+#include "host_pool.h"
 
 void *host_low_map(size_t size, int protection)
 {

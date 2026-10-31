@@ -41,6 +41,74 @@ time.
 #include "upnpcommands.h"
 #include "upnperrors.h"
 
+#ifdef __PROSPERO__
+#include <errno.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+
+/* miniupnpc needs IPv4 addrinfo for SSDP and router HTTP. The platform
+getaddrinfo refuses all requests, so use the title's SceNet resolver. */
+int ps5_upnp_getaddrinfo(const char *host, const char *service, const struct addrinfo *hints,
+	struct addrinfo **result)
+{
+	struct addrinfo *entry;
+	struct sockaddr_in *address;
+	char *end;
+	long port = service ? strtol(service, &end, 10) : 0;
+	posix_ulong ip;
+
+	*result = NULL;
+	if (!host || (service && (*end || port < 0 || port > 65535)))
+		return EAI_NONAME;
+	if (hints && hints->ai_family != AF_UNSPEC && hints->ai_family != AF_INET)
+		return EAI_FAMILY;
+	ip = posix_resolve_ipv4(host);
+	if (!ip)
+		return EAI_NONAME;
+	entry = calloc(1, sizeof(*entry) + sizeof(*address));
+	if (!entry)
+		return EAI_MEMORY;
+	address = (struct sockaddr_in *)(entry + 1);
+	address->sin_len = sizeof(*address);
+	address->sin_family = AF_INET;
+	address->sin_port = htons((unsigned short)port);
+	address->sin_addr.s_addr = ip;
+	entry->ai_family = AF_INET;
+	entry->ai_socktype = hints ? hints->ai_socktype : 0;
+	entry->ai_protocol = hints ? hints->ai_protocol : 0;
+	entry->ai_addrlen = sizeof(*address);
+	entry->ai_addr = (struct sockaddr *)address;
+	*result = entry;
+	return 0;
+}
+
+void ps5_upnp_freeaddrinfo(struct addrinfo *entry)
+{
+	while (entry)
+	{
+		struct addrinfo *next = entry->ai_next;
+		free(entry);
+		entry = next;
+	}
+}
+
+/* The SDK has no interface-name/index lookup. IPv4 discovery does not
+need it; IPv6 scoped interface names fail rather than choosing one. */
+unsigned int if_nametoindex(const char *name)
+{
+	(void)name;
+	errno = ENXIO;
+	return 0;
+}
+char *if_indextoname(unsigned int index, char *name)
+{
+	(void)index;
+	(void)name;
+	errno = ENXIO;
+	return NULL;
+}
+#endif
+
 enum
 {
 	/* milliseconds the router is looked for */
@@ -83,7 +151,13 @@ static int port_unused(unsigned short port)
 	memset(&address, 0, sizeof(address));
 	address.sin_family = AF_INET;
 	address.sin_port = port;
+#ifdef __PROSPERO__
+	/* This address is host-native, unlike guest addresses at the import boundary. */
+	address.sin_len = sizeof(address);
+	unused = bind(socket, (const struct sockaddr *)&address, sizeof(address)) == 0;
+#else
 	unused = posix_socket_bind(socket, &address, sizeof(address)) == 0;
+#endif
 	posix_socket_close(socket);
 	return unused;
 }

@@ -31,6 +31,22 @@ Built with the host's ABI, as the other posix_*.c.
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef __PROSPERO__
+#include "mbedtls/entropy.h"
+int host_ps5_random_bytes(void *, size_t);
+
+/* Mbed TLS uses the same PS5 entropy source as the host. */
+int mbedtls_hardware_poll(void *data, unsigned char *output, size_t length, size_t *written)
+{
+	(void)data;
+	*written = 0;
+	if (host_ps5_random_bytes(output, length) != 0)
+		return MBEDTLS_ERR_ENTROPY_SOURCE_FAILED;
+	*written = length;
+	return 0;
+}
+#endif
+
 enum
 {
 	MAXIMUM_ENDPOINTS = 128,

@@ -89,9 +89,18 @@ def main():
         def symbol(n):
             # hostposix_<name> imports port/linux/src/posix.h's posix_<name>
             return "posix_" + n[len("hostposix_"):] if n.startswith("hostposix_") else n
-        table += [f"extern void {symbol(n)}(void);" for n in host_names]
+        for n in host_names:
+            if n.startswith("host_gl_"):
+                table += ["#ifndef __PROSPERO__", f"extern void {symbol(n)}(void);", "#endif"]
+            else:
+                table.append(f"extern void {symbol(n)}(void);")
         table += ["", "static const struct { const char *name; void *function; } imports[] =", "{"]
-        table += [f'\t{{ "{n}", (void *){symbol(n)} }},' for n in host_names]
+        for n in host_names:
+            if n.startswith("host_gl_"):
+                table.append("#ifndef __PROSPERO__")
+            table.append(f'\t{{ "{n}", (void *){symbol(n)} }},')
+            if n.startswith("host_gl_"):
+                table.append("#endif")
         table += ["};", "",
                   "void *host_resolve_import(const char *name)",
                   "{",
