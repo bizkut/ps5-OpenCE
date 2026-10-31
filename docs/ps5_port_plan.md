@@ -685,11 +685,11 @@ game with the DualSense (run3), push to talk, open mic and the mute button
 screen, so without a klog: the AudioOut counters of that session were not
 recorded), split screen with two DualSenses on two signed-in users (the
 release build started from the home screen; its `opence.log` shows both
-pads opened and AudioOut without underrun). Run5: both users signed in on
-the console got a pad, 119.88 Hz kept, no audio underrun. Left: rumble
-(the code is in: the game's `XInputSetState` calls `SDL_RumbleGamepad`,
-which the PS5 host turns into `scePadSetVibration`, stopped when its
-duration ends), keyboard and mouse in play, hot-plug.
+pads opened and AudioOut without underrun), a USB keyboard. Run5: both
+users signed in on the console got a pad, 119.88 Hz kept, no audio
+underrun. Left: rumble (the code is in: the game's `XInputSetState` calls
+`SDL_RumbleGamepad`, which the PS5 host turns into `scePadSetVibration`,
+stopped when its duration ends), the mouse in play, hot-plug.
 
 Voice chat on the PS5 (the owner's choice, 2026-10-31) follows Settings >
 Audio > VOICE CHAT (`audio.voice_chat`), as on every port:
