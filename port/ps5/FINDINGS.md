@@ -609,8 +609,11 @@ Evidence in `build/ps5/evidence/release/run5` and `run6`, the PS5's HDR on.
 
 - Run5 (env file: only `HALO_EXIT_AFTER=40`): `/data/opence/config.toml`
   had `hdr = true` and `hdr_output = true`, written at 20:15 during the HDR
-  runs (what wrote them was not established), so the game asked for HDR:
-  `dynamic_range 2, HDR10 on`, EGL RGB10_A2 BT.2020 PQ, the WSI's and
+  runs. The `HALO_*` variables are not written to the file: one setting is
+  written by `config_write` (`port_config.c:2510`), which the menus'
+  settings screens call (`menu_functions.c:429`, `476`); so presumably the
+  game's Video Setup was used during those runs. The game therefore asked
+  for HDR: `dynamic_range 2, HDR10 on`, EGL RGB10_A2 BT.2020 PQ, the WSI's and
   kopper's HDR10 swapchain lines, HDMI `YCC2100_PQ`. Both signed-in users
   got a pad; after the first 10 s, 1199 frames at 8.342 ms mean; AudioOut
   with no underrun; `debug.exit_after`, `LoadExec exit (0)`.
