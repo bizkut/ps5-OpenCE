@@ -1,0 +1,27 @@
+Subject: egl/surfaceless: Zink without a DRM device where there is no libdrm
+
+The surfaceless platform probes DRM devices first and goes on without one
+only for software rendering (LIBGL_ALWAYS_SOFTWARE), which makes Zink look
+for a CPU Vulkan device. Built without libdrm (the PS5) there are no DRM
+devices: with MESA_LOADER_DRIVER_OVERRIDE=zink it goes on to Zink's own
+Vulkan device through kopper's pbuffers.
+
+diff --git a/src/egl/drivers/dri2/platform_surfaceless.c b/src/egl/drivers/dri2/platform_surfaceless.c
+index 8fbb9a6..156527e 100644
+--- a/src/egl/drivers/dri2/platform_surfaceless.c
++++ b/src/egl/drivers/dri2/platform_surfaceless.c
+@@ -393,6 +393,14 @@ dri2_initialize_surfaceless(_EGLDisplay *disp)
+       _eglLog(_EGL_DEBUG, "Falling back to surfaceless swrast without DRM.");
+       driver_loaded = surfaceless_probe_device_sw(disp);
+    }
++#ifndef HAVE_LIBDRM
++   /* Without libdrm there is no DRM device to find (the PS5): Zink reaches
++    * its Vulkan device itself, through kopper's pbuffers. */
++   if (!driver_loaded && disp->Options.Zink && !disp->Options.ForceSoftware) {
++      _eglLog(_EGL_DEBUG, "Zink without a DRM device.");
++      driver_loaded = surfaceless_probe_device_sw(disp);
++   }
++#endif
+ 
+    if (!driver_loaded) {
+       err = "DRI2: failed to load driver";

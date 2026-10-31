@@ -1,0 +1,129 @@
+Subject: ps5: EGL and libgallium as archives beside RADV
+
+A PS5 title loads no shared library of its own, so the console build makes
+EGL and libgallium archives, as RADV's already is, and turns on the DRI
+frontend for Zink without DRM, as macOS has it. Zink then reaches the GPU
+through RADV's PS5 winsys and EGL's surfaceless platform.
+
+diff --git a/meson.build b/meson.build
+index e9f9e3e..df4acd9 100644
+--- a/meson.build
++++ b/meson.build
+@@ -371,7 +371,11 @@ with_vdrm = [
+ ].contains(true)
+ 
+ with_dri = false
+-if with_gallium and (system_has_kms_drm or (with_gallium_zink and (freedreno_kmds.contains('kgsl') or host_machine.system() == 'darwin')))
++# The PlayStation 5 has no DRM, as macOS has none: Zink over RADV's own PS5
++# winsys is its OpenGL, through EGL's surfaceless platform.
++_zink_without_drm = with_gallium_zink and (freedreno_kmds.contains('kgsl') or host_machine.system() == 'darwin' or
++                                           get_option('radv-winsys') == 'ps5')
++if with_gallium and (system_has_kms_drm or _zink_without_drm)
+   _glx = get_option('glx')
+   _egl = get_option('egl')
+   if _glx == 'dri' or _egl.enabled() or (_glx == 'disabled' and _egl.allowed())
+@@ -509,6 +513,12 @@ endif
+ if with_radv_ps5
+   pre_args += '-DRADV_PS5'
+ endif
++# A PS5 title loads no shared library: RADV, Zink and EGL are archives it
++# links, and Zink calls RADV's entry points rather than a Vulkan loader's.
++with_ps5_static = with_radv_ps5 and host_machine.system() != 'linux' and get_option('default_library') == 'static'
++if with_ps5_static and with_gallium_zink
++  pre_args += '-DZINK_STATIC_RADV'
++endif
+ 
+ with_gfxstream_emulated_android = with_gfxstream_vk and with_platform_android and host_machine.system() == 'linux'
+ if with_gfxstream_emulated_android
+diff --git a/src/egl/meson.build b/src/egl/meson.build
+index 4e62ee4..de22a1e 100644
+--- a/src/egl/meson.build
++++ b/src/egl/meson.build
+@@ -204,6 +204,20 @@ if egl_native_platform != ''
+   c_args_for_egl += '-D_EGL_NATIVE_PLATFORM=_EGL_PLATFORM_@0@'.format(egl_native_platform.to_upper())
+ endif
+ 
++if with_ps5_static
++  # The PS5 title links EGL, libgallium and RADV as archives (meson.build).
++  libegl = static_library(
++    egl_lib_name,
++    files_egl,
++    c_args : [c_args_for_egl],
++    cpp_args : [cpp_args_for_egl],
++    gnu_symbol_visibility : 'hidden',
++    include_directories : incs_for_egl,
++    link_with : [link_for_egl],
++    dependencies : [deps_for_egl, dep_dl, dep_libdrm, dep_clock, dep_thread, idep_mesautil],
++    install : true,
++  )
++else
+ libegl = shared_library(
+   egl_lib_name,
+   files_egl,
+@@ -223,6 +237,7 @@ libegl = shared_library(
+   name_prefix : host_machine.system() == 'windows' ? 'lib' : [],  # always use lib, but avoid warnings on !windows
+   vs_module_defs : egl_def
+ )
++endif
+ 
+ if with_glvnd
+   configure_file(
+diff --git a/src/gallium/targets/dri/meson.build b/src/gallium/targets/dri/meson.build
+index c526ffe..953025e 100644
+--- a/src/gallium/targets/dri/meson.build
++++ b/src/gallium/targets/dri/meson.build
+@@ -39,23 +39,19 @@ else
+   libgallium_name = 'gallium-@0@'.format(meson.project_version())
+ endif
+ 
+-libgallium_dri = shared_library(
+-  libgallium_name,
+-  files('dri_target.c'),
+-  include_directories : [
++_gallium_dri_kwargs = {
++  'include_directories' : [
+     inc_include, inc_src, inc_mesa, inc_gallium, inc_gallium_aux, inc_util, inc_gallium_drivers,
+     inc_gallium_winsys, include_directories('../../frontends/dri'),
+   ],
+-  gnu_symbol_visibility : 'hidden',
+-  link_args : [ld_args_build_id, ld_args_gc_sections, gallium_dri_ld_args],
+-  link_depends : gallium_dri_link_depends,
+-  link_with : [
++  'gnu_symbol_visibility' : 'hidden',
++  'link_with' : [
+     libmesa, libgalliumvl,
+     libgallium, libglapi, libpipe_loader_static, libws_null, libwsw, libswdri,
+     libswkmsdri, gallium_dri_link_with
+   ],
+-  link_whole : [libdri, gallium_dri_link_whole],
+-  dependencies : [
++  'link_whole' : [libdri, gallium_dri_link_whole],
++  'dependencies' : [
+     dep_libdrm, dep_llvm, dep_thread, idep_xmlconfig, idep_mesautil,
+     driver_swrast, driver_r300, driver_r600, driver_radeonsi, driver_nouveau,
+     driver_kmsro, driver_v3d, driver_vc4, driver_freedreno, driver_etnaviv,
+@@ -63,9 +59,21 @@ libgallium_dri = shared_library(
+     driver_panfrost, driver_iris, driver_lima, driver_zink, driver_d3d12,
+     driver_asahi, driver_crocus, driver_rocket, driver_ethosu
+   ],
+-  install : true,
+-  name_suffix : libname_suffix,
+-)
++  'install' : true,
++}
++if with_ps5_static
++  # The PS5 title links EGL, libgallium and RADV as archives (meson.build).
++  libgallium_dri = static_library(libgallium_name, files('dri_target.c'), kwargs : _gallium_dri_kwargs)
++else
++  libgallium_dri = shared_library(
++    libgallium_name,
++    files('dri_target.c'),
++    link_args : [ld_args_build_id, ld_args_gc_sections, gallium_dri_ld_args],
++    link_depends : gallium_dri_link_depends,
++    name_suffix : libname_suffix,
++    kwargs : _gallium_dri_kwargs,
++  )
++endif
+ 
+ shared_glapi_lib = libgallium_dri
+ 

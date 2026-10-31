@@ -1,0 +1,23 @@
+{
+  "payload_sdk": {
+    "repository": "../forever/PS5_PayloadSDK",
+    "commit": "fdb2763789a50a4fcc9a98dcae13f5e336c6a1ee",
+    "release": "../forever/.downloads/ps5-payload-sdk.zip",
+    "release_sha256": "8cfbc7cd5811e719eb4f0c47eea668d3dc7b40bc8ab11c4a5031d40c23ec02da"
+  },
+  "ps5_vulkan": {
+    "repository": "../PS5_Vulkan",
+    "commit": "f410e67a0241b3e8edcdbcd2a9b285dfc4a412ed",
+    "paths": ["tooling/native", "tooling/psbc/ps5-pie-unwind.ld", "tooling/prospero-clang18", "tooling/radv/ps5-cross.ini",
+              "vendor/ps5/sdk/stubs/agc_canary_link_stub.c", "vendor/ps5/sdk/stubs/agc_driver_canary_link_stub.c"],
+    "libc_raw_sha256": "8ee6e124993e1af26420cb455890fd002f5d6c7e78883c860ce45734e7d002bb",
+    "libc_prx_sha256": "e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036"
+  },
+  "ps5_mesa": {
+    "repository": "../PS5_Mesa",
+    "commit": "b2604813a277aef7bc6f0b78cb8b92f94c1139c8",
+    "branch": "feat/videoout-hdr10-vrr",
+    "patches": "port/ps5/patches/mesa",
+    "note": "origin's merge of HDR10 output (upstream PR #6) and the VRR idle floor (PR #5) over main a8800d9, which contains the 1ba9874f ../PS5_Vulkan's tools/build-radv.sh pins; RADV, Zink and EGL are built from it (tools/ps5_mesa.py)."
+  }
+}

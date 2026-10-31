@@ -1,0 +1,45 @@
+Subject: zink: take the linked RADV's entry points on the PS5
+
+With RADV linked into the title (ZINK_STATIC_RADV), Zink takes
+vk_icdGetInstanceProcAddr and vk_common_GetDeviceProcAddr from it, the two a
+Vulkan loader would otherwise give, instead of opening libvulkan.so.1.
+
+diff --git a/src/gallium/drivers/zink/zink_screen.c b/src/gallium/drivers/zink/zink_screen.c
+index 3b53787..40e0239 100644
+--- a/src/gallium/drivers/zink/zink_screen.c
++++ b/src/gallium/drivers/zink/zink_screen.c
+@@ -63,6 +63,12 @@
+ #endif
+ 
+ static int num_screens = 0;
++
++#ifdef ZINK_STATIC_RADV
++VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vk_icdGetInstanceProcAddr(VkInstance instance, const char *name);
++VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vk_common_GetDeviceProcAddr(VkDevice device, const char *name);
++#endif
++
+ bool zink_tracing = false;
+ 
+ #if DETECT_OS_WINDOWS
+@@ -3428,6 +3434,13 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
+ 
+    u_trace_state_init();
+ 
++#ifdef ZINK_STATIC_RADV
++   /* The PS5 title links RADV's archive: its ICD and common entry points, the
++    * two a Vulkan loader would otherwise give (meson.build). */
++   screen->loader_lib = NULL;
++   screen->vk_GetInstanceProcAddr = vk_icdGetInstanceProcAddr;
++   screen->vk_GetDeviceProcAddr = vk_common_GetDeviceProcAddr;
++#else
+    screen->loader_lib = util_dl_open(VK_LIBNAME);
+    if (!screen->loader_lib) {
+       if (!screen->driver_name_is_inferred)
+@@ -3437,6 +3450,7 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
+ 
+    screen->vk_GetInstanceProcAddr = (PFN_vkGetInstanceProcAddr)util_dl_get_proc_address(screen->loader_lib, "vkGetInstanceProcAddr");
+    screen->vk_GetDeviceProcAddr = (PFN_vkGetDeviceProcAddr)util_dl_get_proc_address(screen->loader_lib, "vkGetDeviceProcAddr");
++#endif
+    if (!screen->vk_GetInstanceProcAddr ||
+        !screen->vk_GetDeviceProcAddr) {
+       if (!screen->driver_name_is_inferred)

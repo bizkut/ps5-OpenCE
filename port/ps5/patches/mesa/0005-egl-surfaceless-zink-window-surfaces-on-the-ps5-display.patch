@@ -1,0 +1,432 @@
+Subject: egl/surfaceless, zink: window surfaces on the PS5's display through kopper
+
+With KOPPER_DISPLAY (the PS5 build), a window surface on EGL's surfaceless
+platform is the one display, VideoOut. Its native window is two uint32_t,
+the width and height; the surfaceless platform's kopper loader extension
+describes it as a display surface (kopper_interface.h's
+kopper_display_surface_info), and Zink's kopper makes a VK_KHR_display plane
+surface on the display mode of that size, or the first, and presents to it.
+Each size is a display target of its own. Zink's instance enables
+VK_KHR_display where the driver has it. The surfaceless platform's configs
+then take windows too, and eglSwapBuffers and eglSwapInterval reach
+kopper.
+
+diff --git a/include/kopper_interface.h b/include/kopper_interface.h
+index 7e30277..7d7fb89 100644
+--- a/include/kopper_interface.h
++++ b/include/kopper_interface.h
+@@ -93,6 +93,20 @@ struct kopper_vk_surface_create_storage {
+    intptr_t padding[3];
+ };
+ 
++#ifdef KOPPER_DISPLAY
++/* The one display of a VK_KHR_display device (VideoOut on the PS5): sType
++ * VK_STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR, which marks the kind,
++ * and the size of the surface. Zink takes the display and the mode of that
++ * size itself (VkDisplaySurfaceCreateInfoKHR needs both), as the loader has
++ * no Vulkan handles. */
++struct kopper_display_surface_info {
++   VkStructureType sType;
++   struct VkBaseOutStructure *pNext;
++   uint32_t width;
++   uint32_t height;
++};
++#endif
++
+ struct kopper_loader_info {
+    struct kopper_vk_surface_create_storage bos;
+    int has_alpha;
+diff --git a/meson.build b/meson.build
+index 17acded..820ff13 100644
+--- a/meson.build
++++ b/meson.build
+@@ -518,6 +518,10 @@ endif
+ with_ps5_static = with_radv_ps5 and host_machine.system() != 'linux' and get_option('default_library') == 'static'
+ if with_ps5_static and with_gallium_zink
+   pre_args += '-DZINK_STATIC_RADV'
++  # Zink's kopper presents on the one display, VideoOut, through
++  # VK_KHR_display (src/vulkan/wsi/wsi_common_videoout.c), for EGL window
++  # surfaces on the surfaceless platform.
++  pre_args += '-DKOPPER_DISPLAY'
+ endif
+ 
+ with_gfxstream_emulated_android = with_gfxstream_vk and with_platform_android and host_machine.system() == 'linux'
+diff --git a/src/egl/drivers/dri2/egl_dri2.c b/src/egl/drivers/dri2/egl_dri2.c
+index edee4ff..3821244 100644
+--- a/src/egl/drivers/dri2/egl_dri2.c
++++ b/src/egl/drivers/dri2/egl_dri2.c
+@@ -494,6 +494,15 @@ dri2_pbuffer_visual_index(enum pipe_format format)
+ 
+ void
+ dri2_add_pbuffer_configs_for_visuals(_EGLDisplay *disp)
++{
++   dri2_add_configs_for_visuals(disp, EGL_PBUFFER_BIT);
++}
++
++/* the configs of the formats a pbuffer can have, for surface_type: the
++ * double-buffered ones take windows too when it has EGL_WINDOW_BIT (window
++ * surfaces kopper presents itself) */
++void
++dri2_add_configs_for_visuals(_EGLDisplay *disp, EGLint surface_type)
+ {
+    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+    unsigned int format_count[ARRAY_SIZE(dri2_pbuffer_visuals)] = {0};
+@@ -521,7 +530,7 @@ dri2_add_pbuffer_configs_for_visuals(_EGLDisplay *disp)
+       };
+ 
+       dri2_conf = dri2_add_config(disp, dri2_dpy->driver_configs[i],
+-                                  EGL_PBUFFER_BIT, attr_list);
++                                  surface_type, attr_list);
+       if (dri2_conf)
+          format_count[idx]++;
+    }
+diff --git a/src/egl/drivers/dri2/egl_dri2.h b/src/egl/drivers/dri2/egl_dri2.h
+index aa5692a..10caf89 100644
+--- a/src/egl/drivers/dri2/egl_dri2.h
++++ b/src/egl/drivers/dri2/egl_dri2.h
+@@ -482,6 +482,9 @@ dri2_add_config(_EGLDisplay *disp, const struct dri_config *dri_config,
+ void
+ dri2_add_pbuffer_configs_for_visuals(_EGLDisplay *disp);
+ 
++void
++dri2_add_configs_for_visuals(_EGLDisplay *disp, EGLint surface_type);
++
+ EGLint
+ dri2_from_dri_compression_rate(enum __DRIFixedRateCompression rate);
+ 
+diff --git a/src/egl/drivers/dri2/platform_surfaceless.c b/src/egl/drivers/dri2/platform_surfaceless.c
+index 156527e..13c0856 100644
+--- a/src/egl/drivers/dri2/platform_surfaceless.c
++++ b/src/egl/drivers/dri2/platform_surfaceless.c
+@@ -106,9 +106,12 @@ surfaceless_image_get_buffers(struct dri_drawable *driDrawable, unsigned int for
+    return 1;
+ }
+ 
++/* window_extent: a window surface's width and height (KOPPER_DISPLAY), or
++ * NULL for a pbuffer */
+ static _EGLSurface *
+ dri2_surfaceless_create_surface(_EGLDisplay *disp, EGLint type,
+-                                _EGLConfig *conf, const EGLint *attrib_list)
++                                _EGLConfig *conf, const EGLint *attrib_list,
++                                const uint32_t *window_extent)
+ {
+    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+    struct dri2_egl_config *dri2_conf = dri2_egl_config(conf);
+@@ -126,8 +129,12 @@ dri2_surfaceless_create_surface(_EGLDisplay *disp, EGLint type,
+    }
+ 
+    if (!dri2_init_surface(&dri2_surf->base, disp, type, conf, attrib_list,
+-                          false, NULL))
++                          false, (void *)window_extent))
+       goto cleanup_surface;
++   if (window_extent) {
++      dri2_surf->base.Width = window_extent[0];
++      dri2_surf->base.Height = window_extent[1];
++   }
+ 
+    config = dri2_get_dri_config(dri2_conf, type, dri2_surf->base.GLColorspace);
+ 
+@@ -170,11 +177,59 @@ dri2_surfaceless_create_pbuffer_surface(_EGLDisplay *disp, _EGLConfig *conf,
+                                         const EGLint *attrib_list)
+ {
+    return dri2_surfaceless_create_surface(disp, EGL_PBUFFER_BIT, conf,
+-                                          attrib_list);
++                                          attrib_list, NULL);
++}
++
++#ifdef KOPPER_DISPLAY
++/* The one display (VideoOut on the PS5), which Zink's kopper presents to
++ * through VK_KHR_display: the native window is the surface's width and
++ * height, two uint32_t; Zink takes the display mode of that size. */
++static _EGLSurface *
++dri2_surfaceless_create_window_surface(_EGLDisplay *disp, _EGLConfig *conf,
++                                       void *native_window,
++                                       const EGLint *attrib_list)
++{
++   const uint32_t *extent = native_window;
++
++   if (!dri2_egl_display(disp)->kopper || !extent[0] || !extent[1]) {
++      _eglError(EGL_BAD_NATIVE_WINDOW, "eglCreateWindowSurface");
++      return NULL;
++   }
++   return dri2_surfaceless_create_surface(disp, EGL_WINDOW_BIT, conf,
++                                          attrib_list, extent);
++}
++
++static EGLBoolean
++dri2_surfaceless_swap_buffers(_EGLDisplay *disp, _EGLSurface *draw)
++{
++   struct dri2_egl_surface *dri2_surf = dri2_egl_surface(draw);
++
++   if (draw->Type != EGL_WINDOW_BIT)
++      return EGL_TRUE;
++   kopperSwapBuffers(dri2_surf->dri_drawable,
++                     __DRI2_FLUSH_CONTEXT | __DRI2_FLUSH_INVALIDATE_ANCILLARY);
++   return EGL_TRUE;
+ }
+ 
++static EGLBoolean
++dri2_surfaceless_swap_interval(_EGLDisplay *disp, _EGLSurface *surf,
++                               EGLint interval)
++{
++   struct dri2_egl_surface *dri2_surf = dri2_egl_surface(surf);
++
++   if (surf->Type == EGL_WINDOW_BIT)
++      kopperSetSwapInterval(dri2_surf->dri_drawable, interval);
++   return EGL_TRUE;
++}
++#endif
++
+ static const struct dri2_egl_display_vtbl dri2_surfaceless_display_vtbl = {
+    .create_pbuffer_surface = dri2_surfaceless_create_pbuffer_surface,
++#ifdef KOPPER_DISPLAY
++   .create_window_surface = dri2_surfaceless_create_window_surface,
++   .swap_buffers = dri2_surfaceless_swap_buffers,
++   .swap_interval = dri2_surfaceless_swap_interval,
++#endif
+    .destroy_surface = surfaceless_destroy_surface,
+    .create_image = dri2_create_image_khr,
+    .get_dri_drawable = dri2_surface_get_dri_drawable,
+@@ -215,10 +270,53 @@ static const __DRIextension *swrast_loader_extensions[] = {
+    &image_lookup_extension.base, NULL,
+ };
+ 
++#ifdef KOPPER_DISPLAY
++static void
++surfaceless_kopper_get_drawable_info(struct dri_drawable *draw, int *w, int *h,
++                                     void *loaderPrivate)
++{
++   struct dri2_egl_surface *dri2_surf = loaderPrivate;
++
++   *w = dri2_surf->base.Width;
++   *h = dri2_surf->base.Height;
++}
++
++/* a window surface is the one display (kopper_interface.h); a pbuffer
++ * leaves the info empty, which kopper takes as no window */
++static void
++surfaceless_kopper_set_surface_create_info(void *draw,
++                                           struct kopper_loader_info *out)
++{
++   struct dri2_egl_surface *dri2_surf = draw;
++   struct kopper_display_surface_info *display =
++      (struct kopper_display_surface_info *)&out->bos;
++
++   if (dri2_surf->base.Type != EGL_WINDOW_BIT)
++      return;
++   display->sType = VK_STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR;
++   display->pNext = NULL;
++   display->width = dri2_surf->base.Width;
++   display->height = dri2_surf->base.Height;
++   out->present_opaque = true;
++   out->initial_swap_interval = 1;
++}
++
++static const __DRIkopperLoaderExtension surfaceless_kopper_loader_extension = {
++   .base = {__DRI_KOPPER_LOADER, 1},
++   .GetDrawableInfo = surfaceless_kopper_get_drawable_info,
++   .SetSurfaceCreateInfo = surfaceless_kopper_set_surface_create_info,
++};
++
++static const __DRIextension *kopper_loader_extensions[] = {
++   &surfaceless_kopper_loader_extension.base, &image_lookup_extension.base,
++   NULL,
++};
++#else
+ static const __DRIextension *kopper_loader_extensions[] = {
+    &kopper_pbuffer_loader_extension.base, &image_lookup_extension.base,
+    &image_lookup_extension.base, NULL,
+ };
++#endif
+ 
+ static bool
+ surfaceless_probe_device(_EGLDisplay *disp, bool swrast, bool zink)
+@@ -414,7 +512,12 @@ dri2_initialize_surfaceless(_EGLDisplay *disp)
+ #endif
+    dri2_set_WL_bind_wayland_display(disp);
+ 
++#ifdef KOPPER_DISPLAY
++   /* (windows on the one display, through kopper) */
++   dri2_add_configs_for_visuals(disp, dri2_dpy->kopper ? EGL_WINDOW_BIT | EGL_PBUFFER_BIT : EGL_PBUFFER_BIT);
++#else
+    dri2_add_pbuffer_configs_for_visuals(disp);
++#endif
+ 
+    /* Fill vtbl last to prevent accidentally calling virtual function during
+     * initialization.
+diff --git a/src/egl/main/eglapi.c b/src/egl/main/eglapi.c
+index fb5a8b6..b016f85 100644
+--- a/src/egl/main/eglapi.c
++++ b/src/egl/main/eglapi.c
+@@ -1043,8 +1043,15 @@ _eglCreateWindowSurfaceCommon(_EGLDisplay *disp, EGLConfig config,
+    if (native_window == NULL)
+       RETURN_EGL_ERROR(disp, EGL_BAD_NATIVE_WINDOW, EGL_NO_SURFACE);
+ 
++#ifdef KOPPER_DISPLAY
++   /* (the PS5: a window surface on the surfaceless platform is the one
++    * display, VideoOut, which Zink's kopper presents to;
++    * platform_surfaceless.c) */
++   if (disp && disp->Platform == _EGL_PLATFORM_DEVICE) {
++#else
+    if (disp && (disp->Platform == _EGL_PLATFORM_SURFACELESS ||
+                 disp->Platform == _EGL_PLATFORM_DEVICE)) {
++#endif
+       /* From the EGL_MESA_platform_surfaceless spec (v1):
+        *
+        *    eglCreatePlatformWindowSurface fails when called with a <display>
+diff --git a/src/gallium/drivers/zink/zink_instance.py b/src/gallium/drivers/zink/zink_instance.py
+index 234d0ec..4add0aa 100755
+--- a/src/gallium/drivers/zink/zink_instance.py
++++ b/src/gallium/drivers/zink/zink_instance.py
+@@ -44,6 +44,7 @@ EXTENSIONS = [
+     Extension("VK_MVK_moltenvk",
+         nonstandard=True),
+     Extension("VK_KHR_surface"),
++    Extension("VK_KHR_display"),
+     Extension("VK_EXT_headless_surface"),
+     Extension("VK_KHR_wayland_surface"),
+     Extension("VK_KHR_xcb_surface"),
+diff --git a/src/gallium/drivers/zink/zink_kopper.c b/src/gallium/drivers/zink/zink_kopper.c
+index 8eb7f91..d9ce0f1 100644
+--- a/src/gallium/drivers/zink/zink_kopper.c
++++ b/src/gallium/drivers/zink/zink_kopper.c
+@@ -81,12 +81,71 @@ init_dt_type(struct kopper_displaytarget *cdt)
+    case VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR:
+       cdt->type = KOPPER_WIN32;
+       break;
++#endif
++#ifdef KOPPER_DISPLAY
++   case VK_STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR:
++      cdt->type = KOPPER_VK_DISPLAY;
++      break;
+ #endif
+    default:
+       UNREACHABLE("unsupported!");
+    }
+ }
+ 
++#ifdef KOPPER_DISPLAY
++/* the key of a display target in screen->dts: there is one display, and a
++ * window surface on it is its size (each size is a mode of its own, and
++ * VideoOut a set of buffers of its own) */
++static void *
++kopper_display_key(const struct kopper_displaytarget *cdt)
++{
++   const struct kopper_display_surface_info *info =
++      (const struct kopper_display_surface_info *)&cdt->info.bos;
++   return (void *)(uintptr_t)((uint64_t)info->width << 32 | info->height);
++}
++
++/* the one display there is (VideoOut on the PS5), its mode of the surface's
++ * size or else its first, and a plane surface of that size */
++static VkResult
++kopper_create_display_surface(struct zink_screen *screen, const struct kopper_display_surface_info *info,
++                              VkSurfaceKHR *surface)
++{
++   VkDisplayPropertiesKHR display;
++   VkDisplayModePropertiesKHR modes[8];
++   uint32_t count = 1, mode = 0;
++   VkResult error = VKSCR(GetPhysicalDeviceDisplayPropertiesKHR)(screen->pdev, &count, &display);
++   if (error != VK_SUCCESS && error != VK_INCOMPLETE)
++      return error;
++   if (!count)
++      return VK_ERROR_INITIALIZATION_FAILED;
++   count = ARRAY_SIZE(modes);
++   error = VKSCR(GetDisplayModePropertiesKHR)(screen->pdev, display.display, &count, modes);
++   if (error != VK_SUCCESS && error != VK_INCOMPLETE)
++      return error;
++   if (!count)
++      return VK_ERROR_INITIALIZATION_FAILED;
++   for (uint32_t i = 0; i < count; i++) {
++      if (modes[i].parameters.visibleRegion.width == info->width &&
++          modes[i].parameters.visibleRegion.height == info->height) {
++         mode = i;
++         break;
++      }
++   }
++   const VkDisplaySurfaceCreateInfoKHR create_info = {
++      .sType = VK_STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR,
++      .displayMode = modes[mode].displayMode,
++      .transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
++      .alphaMode = VK_DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR,
++      .imageExtent = {info->width, info->height},
++   };
++   mesa_logi("zink: kopper on display %s, mode %ux%u at %.3f Hz, surface %ux%u",
++             display.displayName ? display.displayName : "(unnamed)",
++             modes[mode].parameters.visibleRegion.width, modes[mode].parameters.visibleRegion.height,
++             modes[mode].parameters.refreshRate / 1000.0, info->width, info->height);
++   return VKSCR(CreateDisplayPlaneSurfaceKHR)(screen->instance, &create_info, NULL, surface);
++}
++#endif
++
+ static VkSurfaceKHR
+ kopper_CreateSurface(struct zink_screen *screen, struct kopper_displaytarget *cdt)
+ {
+@@ -120,6 +179,12 @@ kopper_CreateSurface(struct zink_screen *screen, struct kopper_displaytarget *cd
+       error = VKSCR(CreateWin32SurfaceKHR)(screen->instance, win32, NULL, &surface);
+       break;
+    }
++#endif
++#ifdef KOPPER_DISPLAY
++   case VK_STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR:
++      error = kopper_create_display_surface(screen, (const struct kopper_display_surface_info *)&cdt->info.bos,
++                                            &surface);
++      break;
+ #endif
+    default:
+       UNREACHABLE("unsupported!");
+@@ -236,6 +301,11 @@ find_dt_entry(struct zink_screen *screen, const struct kopper_displaytarget *cdt
+       he = _mesa_hash_table_search(&screen->dts, win32->hwnd);
+       break;
+    }
++#endif
++#ifdef KOPPER_DISPLAY
++   case KOPPER_VK_DISPLAY:
++      he = _mesa_hash_table_search(&screen->dts, kopper_display_key(cdt));
++      break;
+ #endif
+    default:
+       UNREACHABLE("unsupported!");
+@@ -315,6 +385,7 @@ kopper_CreateSwapchain(struct zink_screen *screen, struct kopper_displaytarget *
+    switch (cdt->type) {
+    case KOPPER_X11:
+    case KOPPER_WIN32:
++   case KOPPER_VK_DISPLAY:
+       /* With Xcb, minImageExtent, maxImageExtent, and currentExtent must always equal the window size.
+        * ...
+        * Due to above restrictions, it is only possible to create a new swapchain on this
+@@ -446,6 +517,7 @@ zink_kopper_displaytarget_create(struct zink_screen *screen, unsigned tex_usage,
+             break;
+          case KOPPER_WAYLAND:
+          case KOPPER_WIN32:
++         case KOPPER_VK_DISPLAY:
+             _mesa_hash_table_init(&screen->dts, screen, _mesa_hash_pointer, _mesa_key_pointer_equal);
+             break;
+          default:
+@@ -517,6 +589,11 @@ zink_kopper_displaytarget_create(struct zink_screen *screen, unsigned tex_usage,
+       _mesa_hash_table_insert(&screen->dts, win32->hwnd, cdt);
+       break;
+    }
++#endif
++#ifdef KOPPER_DISPLAY
++   case KOPPER_VK_DISPLAY:
++      _mesa_hash_table_insert(&screen->dts, kopper_display_key(cdt), cdt);
++      break;
+ #endif
+    default:
+       UNREACHABLE("unsupported!");
+diff --git a/src/gallium/drivers/zink/zink_kopper.h b/src/gallium/drivers/zink/zink_kopper.h
+index d1971ec..649ada3 100644
+--- a/src/gallium/drivers/zink/zink_kopper.h
++++ b/src/gallium/drivers/zink/zink_kopper.h
+@@ -74,7 +74,9 @@ struct kopper_swapchain {
+ enum kopper_type {
+    KOPPER_X11,
+    KOPPER_WAYLAND,
+-   KOPPER_WIN32
++   KOPPER_WIN32,
++   /* VK_KHR_display's one display (kopper_interface.h) */
++   KOPPER_VK_DISPLAY,
+ };
+ 
+ struct kopper_displaytarget

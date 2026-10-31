@@ -1,0 +1,35 @@
+Subject: ps5: the DRI2 frontend without libdrm, and no System V shared memory
+
+EGL's DRI2 driver calls the DRI frontend's image, interop and blob-cache
+functions (dri2.c), which meson builds only for DRM, Apple or pseudo-DRM
+platforms; the PS5 build has them as macOS does, through util/libdrm.h's
+stand-ins. Its libc declares shmget, but no system module gives a title
+one: the software winsys keeps to plain memory there.
+
+diff --git a/meson.build b/meson.build
+index df4acd9..17acded 100644
+--- a/meson.build
++++ b/meson.build
+@@ -729,7 +729,10 @@ if with_vulkan_icd_dir == ''
+   with_vulkan_icd_dir = join_paths(get_option('datadir'), 'vulkan/icd.d')
+ endif
+ 
+-with_dri2 = (with_dri or with_any_vk) and (with_dri_platform == 'drm' or with_dri_platform == 'apple' or  with_dri_platform == 'pseudo-drm')
++# (on the PS5, EGL's surfaceless platform needs the DRI2 frontend's image
++# and interop functions with no libdrm, as macOS has them)
++with_dri2 = (with_dri or with_any_vk) and (with_dri_platform == 'drm' or with_dri_platform == 'apple' or  with_dri_platform == 'pseudo-drm' or
++                                           (with_ps5_static and _zink_without_drm))
+ 
+ if with_dri
+   if with_glx == 'disabled' and not with_egl and not with_gbm
+@@ -1648,7 +1651,9 @@ endif
+ foreach h : ['xlocale.h', 'linux/futex.h', 'endian.h', 'dlfcn.h', 'sys/shm.h',
+              'cet.h', 'pthread_np.h', 'poll.h', 'sys/inotify.h',
+              'linux/udmabuf.h']
+-  if cc.check_header(h)
++  # the PS5's libc declares System V shared memory, but no module gives a
++  # title shmget
++  if cc.check_header(h) and not (with_ps5_static and h == 'sys/shm.h')
+     pre_args += '-DHAVE_@0@'.format(h.to_upper().underscorify())
+   endif
+ endforeach
