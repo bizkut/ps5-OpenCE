@@ -21,7 +21,7 @@ static struct
 
 static struct
 {
-    int custom, context, connected;
+    int custom, context, connected, fixed_talk;
     unsigned int instance, blocked, held, pressed;
     unsigned char layout[CONTROLLER_REMAP_ACTIONS], targets[CONTROLLER_REMAP_ACTIONS];
 } remap_ports[4];
@@ -37,6 +37,7 @@ static void physical_values(XINPUT_GAMEPAD const *pad, unsigned char *values)
     int i;
     memcpy(values, pad->bAnalogButtons, 8);
     for (i = 0; i < 8; i++) values[8+i] = pad->wButtons & digital_masks[i] ? 255 : 0;
+    values[16] = pad->wButtons & CONTROLLER_REMAP_TOUCHPAD_MASK ? 255 : 0;
 }
 
 static int capture_device_present(void)
@@ -94,11 +95,12 @@ int controller_remap_capture_poll(int *button)
 
 int controller_remap_input(short port, XINPUT_GAMEPAD *pad, int connected)
 {
-    unsigned char values[16], layout[CONTROLLER_REMAP_ACTIONS], targets[CONTROLLER_REMAP_ACTIONS];
+    unsigned char values[17], layout[CONTROLLER_REMAP_ACTIONS], targets[CONTROLLER_REMAP_ACTIONS];
     unsigned int held = 0;
     struct controller_device device;
     struct platform_input_state input;
     unsigned int actions = 0, allowed;
+    char const *fixed_talk = getenv("HALO_PS5_TOUCHPAD_TALK");
     int i, context, custom;
     if (port < 0 || port >= 4) return 0;
     /* Check from any polled port, including while the selected one is absent. */
@@ -113,10 +115,12 @@ int controller_remap_input(short port, XINPUT_GAMEPAD *pad, int connected)
         return 1;
     }
     physical_values(pad, values);
+    if (fixed_talk && !strcmp(fixed_talk, "1")) pad->wButtons &= ~CONTROLLER_REMAP_TOUCHPAD_MASK;
     for (i = 0; i < 16; i++) if (values[i] > 30) held |= 1u << i;
     platform_input_read(&input, FALSE);
     controller_device_get(port, &device);
     if (!input.focused) connected = 0;
+    remap_ports[port].fixed_talk = fixed_talk && !strcmp(fixed_talk, "1") && connected && values[16] > 30;
     if (capture.phase && capture.port == port)
     {
         controller_device_get(port, &device);
@@ -224,8 +228,11 @@ unsigned int controller_remap_pressed(short port, unsigned int mask)
 int controller_remap_talk(void)
 {
     short port;
+    char const *fixed = getenv("HALO_PS5_TOUCHPAD_TALK");
     for (port = 0; port < 4; port++)
-        if (controller_remap_held(port) & (1u << PAD_TALK)) return 1;
+        if (fixed && !strcmp(fixed, "1") ?
+            (controller_remap_connected(port) && remap_ports[port].fixed_talk) :
+            (controller_remap_held(port) & (1u << PAD_TALK))) return 1;
     return 0;
 }
 

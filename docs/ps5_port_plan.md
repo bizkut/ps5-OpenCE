@@ -420,6 +420,31 @@ M6 records GPU and CPU time per frame, as Savage Wind's benchmarks do, so
 that the lever matches the limit: a GPU limit takes the lower size or FSR 1,
 a CPU limit (the game, Zink's command recording) frame generation.
 
+**D13. Menu pictures with no redraw are upscaled from the player's own
+map, on the console, once.** (The owner's choice, 2026-10-31.) The title
+screen's Halo logo is the Xbox `ui.map`'s `ui\shell\main_menu\halo_logo`,
+1024x256 DXT5, laid out 640 units wide: at 3840x2160 it is stretched about
+2.8 times across and 4.5 times down, compression blocks and all. It and the
+other pictures `port/assets/menus/NON_HANDDRAWN.md` lists (map thumbnails,
+difficulty, colours, the marine) have no redraw, and OpenCE ships none of
+the game's art. So:
+
+- **A.** The PS5 host upscales those bitmaps four times from the player's
+  `ui.map` with Real-ESRGAN on RADV, as Savage Wind makes its HD UI pack on
+  .41 (866 textures in 98.3 s, SavageWindRecomp `ps5/FINDINGS.md:1105-1124`,
+  ncnn and the model under BSD-3, `ps5/deps.lock:28-34` there), once, in
+  the background after start-up, and keeps the result in the data folder
+  with a manifest keyed by the source bitmap's digest. The menus draw a
+  cached picture in the source bitmap's place.
+- **C.** Until the cache exists, or where it is turned off, those menu
+  bitmaps are drawn through an edge-aware upscale filter (FSR 1's EASU, as
+  Savage Wind's 3D view) instead of bilinear.
+
+A setting chooses (on by default on the PS5: the owner's choice; desktop
+ports keep their look unless the project decides otherwise). The
+generator's licences (BSD-3) combine with the AGPL; vendored per
+`port/third_party` rules.
+
 ### The guest/host boundary
 
 The Android files are shared in place, not copied or moved (M1, built):
@@ -642,6 +667,63 @@ Done when: with the DualSense, a person moves, fires, drives and navigates
 every settings screen, and four pads play split screen; the HUD's prompts
 show PlayStation buttons without a setting changed; ten minutes of the
 first level pass with no AudioOut underrun in the klog; rumble is felt.
+
+Status (2026-10-31, `build/ps5/evidence/m4`, `port/ps5/FINDINGS.md`):
+`port/ps5/host/input_ps5.c` (pads per signed-in user through `scePadRead`,
+USB keyboards and mice) and `audio_ps5.c` (one AudioOut port, 48 kHz
+stereo S16, the game's audio callback on a guest stack) are in. Run1: the
+owner heard the game. Run2: the signed-in user's pad open, keyboard and
+mouse libraries started, AudioOut 1876-1878 periods per 10 s with no
+underrun and no error for a minute. Left: the owner's hands-on run
+(buttons, sticks, triggers, rumble, keyboard, the PlayStation prompts),
+split screen with four pads, ten minutes of the first level (`a10.map` is
+now in `/data/opence-dev/maps`), hot-plug and a second user, and voice
+chat's microphone (below). The owner's hands-on run: the host read the
+DualSense, but the game ignored it, because the game takes input only
+while its window has focus and learns it from SDL's
+`SDL_EVENT_WINDOW_FOCUS_GAINED`, which the PS5 host did not send
+(`sdl_platform.c:2534`, `controller_remap_input.c:121`); the host now sends
+it, with `SDL_EVENT_WINDOW_SHOWN`, when the window is made.
+
+Voice chat on the PS5 (the owner's choice, 2026-10-31) follows Settings >
+Audio > VOICE CHAT (`audio.voice_chat`), as on every port:
+
+- PUSH TO TALK (the default): holding the DualSense's touchpad talks, as
+  Forever's `ps5-wow` holds it for its voice input
+  (`ps5/title/voice-state.c`, `voice.cpp`), but the voice goes to OpenCE's
+  voice chat, not to text. The game's settings have no controller binding
+  for talking (only the keyboard's `controls.push_to_talk`), and none is
+  added: on the PS5 the touchpad is TALK (the remapping already reads it,
+  `CONTROLLER_REMAP_TOUCHPAD_MASK` from SDL's `SDL_GAMEPAD_BUTTON_TOUCHPAD`);
+  a USB keyboard's push-to-talk key also works.
+- OPEN MIC: the microphone is open while voice chat may talk and the game
+  sends what it hears as speech, as Android's players use it. The
+  DualSense's mute button cuts it: the console mutes the controller's
+  microphone itself (and lights the button), so the game hears silence;
+  the run checks that and logs it.
+- OFF: no microphone; others are still heard.
+
+The microphone is `libSceAudioIn` (the DualSense's own or a headset),
+opened on the first press (push to talk) or when voice chat first may talk
+(open mic), as `ps5-wow` opens it: `sceAudioInOpen(user, 1, 0, 256, 16000,
+0)`, S16 mono, resampled to what voice chat's recording stream asks
+(`host_sdl_open_audio_stream` without a callback,
+`host_sdl_get_audio_stream_data`). Others' voices already play through
+AudioOut. Done when: in a network game with another machine, a person on
+the PS5 is heard while holding the touchpad and not after letting go (push
+to talk), is heard while speaking and not while the DualSense's mute is on
+(open mic), and is never heard with voice chat off.
+
+### M4b. Menu pictures at 4K (D13)
+
+Done when: on the console, the first start after installing makes the
+upscaled pictures in the background without a late frame in play or the
+menus (the frame-interval summaries); the next start draws them from the
+cache; the title screen's logo, captured at 3840x2160, is sharper than the
+bilinear one by an edge measure (Savage Wind's mean edge gradient) and the
+owner judges it on the TV; with the cache removed, the filtered (C)
+pictures are drawn; the source bitmaps' digests invalidate the cache when a
+different `ui.map` is used.
 
 ### M5. Data, settings, saved games, Custom Edition, mods
 

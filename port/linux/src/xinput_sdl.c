@@ -1267,6 +1267,12 @@ static void sdl_gamepad_state(SDL_Gamepad *gamepad, XINPUT_GAMEPAD *pad)
 	/* the Duke's white and black buttons sit where later pads have shoulders */
 	merge_button(pad, XINPUT_GAMEPAD_WHITE, SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER));
 	merge_button(pad, XINPUT_GAMEPAD_BLACK, SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER));
+	{
+		const char *fixed_talk = getenv("HALO_PS5_TOUCHPAD_TALK");
+		if (fixed_talk && !strcmp(fixed_talk, "1") &&
+			SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_TOUCHPAD))
+			pad->wButtons |= CONTROLLER_REMAP_TOUCHPAD_MASK;
+	}
 
 	left_trigger = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) * 255 / 32767;
 	right_trigger = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) * 255 / 32767;

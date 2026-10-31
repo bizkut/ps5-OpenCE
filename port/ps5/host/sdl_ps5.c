@@ -1,4 +1,4 @@
-/* PS5 SDL bridge: EGL/Zink presentation, with input and audio still absent. */
+/* PS5 SDL bridge: EGL/Zink presentation and device event glue. */
 #include "../../android/guest/runtime/guest_host.h"
 #include "host.h"
 #include <EGL/egl.h>
@@ -12,6 +12,11 @@
 #include <pthread.h>
 
 int sceSystemServiceHideSplashScreen(void);
+int ps5_input_poll(void *event);
+int ps5_input_text(int type);
+void ps5_input_window_created(unsigned int window);
+const char *ps5_scancode_name(int scancode);
+int ps5_scancode_from_name(const char *name);
 static EGLDisplay display = EGL_NO_DISPLAY;
 static EGLSurface surface = EGL_NO_SURFACE;
 static EGLContext egl_context = EGL_NO_CONTEXT;
@@ -124,6 +129,7 @@ unsigned int host_sdl_create_window(const char *title, int width, int height, lo
 		return egl_error("eglCreatePlatformWindowSurface");
 	host_logf(HOST_LOG_INFO, "opence: window %ux%u created in %.1f ms", window_size[0], window_size[1],
 		(nanoseconds() - start) / 1e6);
+	ps5_input_window_created(1);
 	return 1;
 }
 void host_sdl_window_size_in_pixels(unsigned int window, int *width, int *height)
@@ -217,14 +223,11 @@ int host_sdl_gl_swap_window(unsigned int window)
 }
 int host_sdl_poll_event(void *event)
 {
-	(void)event;
-	return 0;
+	return ps5_input_poll(event);
 }
 int host_sdl_text_input(unsigned int window, int type)
 {
-	(void)window;
-	(void)type;
-	return 0;
+	return window ? ps5_input_text(type) : 0;
 }
 int host_sdl_set_clipboard_text(const char *text)
 {
@@ -242,13 +245,11 @@ int host_sdl_open_url(const char *url)
 }
 void host_sdl_scancode_name(int scancode, char *buffer, unsigned int size)
 {
-	(void)scancode;
-	copy_text(buffer, size, "");
+	copy_text(buffer, size, ps5_scancode_name(scancode));
 }
 int host_sdl_scancode_from_name(const char *name)
 {
-	(void)name;
-	return 0;
+	return ps5_scancode_from_name(name);
 }
 int host_sdl_show_toast(const char *message, int duration, int gravity, int x, int y)
 {
@@ -277,86 +278,4 @@ int host_sdl_show_message_box(unsigned int flags, const char *title, const char 
 	(void)button1;
 	(void)button2;
 	return -1;
-}
-int host_sdl_get_gamepads(unsigned int *ids, int capacity)
-{
-	(void)ids;
-	(void)capacity;
-	return 0;
-}
-unsigned int host_sdl_open_gamepad(unsigned int id)
-{
-	(void)id;
-	return 0;
-}
-unsigned int host_sdl_gamepad_from_id(unsigned int id)
-{
-	(void)id;
-	return 0;
-}
-int host_sdl_gamepad_axis(unsigned int gamepad, int axis)
-{
-	(void)gamepad;
-	(void)axis;
-	return 0;
-}
-int host_sdl_gamepad_button(unsigned int gamepad, int button)
-{
-	(void)gamepad;
-	(void)button;
-	return 0;
-}
-int host_sdl_gamepad_type(unsigned int gamepad)
-{
-	(void)gamepad;
-	return 0;
-}
-int host_sdl_rumble_gamepad(unsigned int gamepad, unsigned int low, unsigned int high, unsigned int milliseconds)
-{
-	(void)gamepad;
-	(void)low;
-	(void)high;
-	(void)milliseconds;
-	return 0;
-}
-void host_sdl_close_gamepad(unsigned int gamepad)
-{
-	(void)gamepad;
-}
-unsigned int host_sdl_open_audio_stream(unsigned int device, const void *spec, unsigned int callback,
-										unsigned int userdata)
-{
-	(void)device;
-	(void)spec;
-	(void)callback;
-	(void)userdata;
-	return 0;
-}
-int host_sdl_put_audio_stream_data(unsigned int stream, const void *data, int length)
-{
-	(void)stream;
-	(void)data;
-	(void)length;
-	return 0;
-}
-int host_sdl_resume_audio_stream_device(unsigned int stream)
-{
-	(void)stream;
-	return 0;
-}
-int host_sdl_get_audio_stream_data(unsigned int stream, void *data, int length)
-{
-	(void)stream;
-	(void)data;
-	(void)length;
-	return -1;
-}
-int host_sdl_get_audio_stream_available(unsigned int stream)
-{
-	(void)stream;
-	return -1;
-}
-void host_sdl_destroy_audio_stream(unsigned int stream)
-{
-	(void)stream;
 }

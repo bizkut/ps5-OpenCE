@@ -10,6 +10,8 @@ from .ps5_host_build import ANDROID, LINUX, MBED, TOML
 from .linux_build import MINIUPNPC_DEFINES, MINIUPNPC_DIR, miniupnpc_sources
 
 BUILD = Path("build/ps5")
+# the title's icon (tools/ps5_title.py's TITLE_ICON)
+TITLE_ICON = Path("port/ps5/sce_sys/icon0.png")
 GUEST_ABI_FLAGS = [
     "--target=x86_64-linux-gnux32", "-march=x86-64-v3", "-ffp-contract=off", "-femulated-tls", "-fno-pic",
     "-DHALO_GUEST=1", "-DHALO_X32_GUEST=1", "-DHALO_GLES=1", "-D__linux__=1", "-nostdinc", "-fshort-wchar",
@@ -59,7 +61,7 @@ def generate_ps5_title(n, image, host_table_c):
     flags = (f"-std=gnu11 -O2 -g -ffp-contract=off -fno-omit-frame-pointer -ffunction-sections "
              f"-fdata-sections -D_GNU_SOURCE -DHALO_X32_GUEST=1 "
              f"-I{ANDROID}/include -I{ANDROID}/host -I{ANDROID}/guest/runtime "
-             f"-Iport/ps5/host -I{LINUX} -I{TOML} -I{BUILD}/deps/mesa/include -idirafter port/linux/include")
+             f"-Iport/ps5/host -I{LINUX} -I{TOML} -I{SDL_DIR}/include -I{BUILD}/deps/mesa/include -idirafter port/linux/include")
     sources = sorted(Path("port/ps5/host").glob("*.c"))
     sources += [ANDROID / "host" / (name + ".c") for name in
                 ("host_loader", "host_thread", "host_watch_hash", "host_https", "host_gl")]
@@ -90,8 +92,10 @@ def generate_ps5_title(n, image, host_table_c):
     module = build / "eboot.elf"
     mesa_lib = BUILD / "deps/mesa/lib"
     archives = [mesa_lib / name for name in ("libvulkan_radeon.a", "libgallium.a", "libEGL.a")]
-    n.build(module, "ps5_title_link", objects, implicit=["tools/ps5_title.py", "tools/ps5_deps.py", *archives])
+    n.build(module, "ps5_title_link", objects,
+            implicit=["tools/ps5_title.py", "tools/ps5_deps.py", "port/ps5/stubs/audioin.c", *archives])
     outputs = [folder / "eboot.bin", folder / "sce_module/libc.prx",
                folder / "sce_sys/param.json", folder / "sce_sys/icon0.png"]
-    n.build(outputs, "ps5_title_stage", module, implicit=["tools/ps5_title.py", "port/ps5/sce_sys/param.json"])
+    n.build(outputs, "ps5_title_stage", module, implicit=["tools/ps5_title.py", "port/ps5/sce_sys/param.json",
+                                                          TITLE_ICON])
     return outputs

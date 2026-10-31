@@ -32,6 +32,10 @@ import ps5_deps
 MODULE_SDK = "0x02000009"
 COMPANION_SDK = "0x08050001"
 FSELF_MAGIC = "0x1D3D154F"
+# the launcher's icon: port/assets/icon/opence-icon.png (OpenCE's icon, as
+# the Android, Windows and desktop builds have it) as 8-bit RGB, the form
+# the console's other titles' icon0.png have (SavageWindRecomp's)
+TITLE_ICON = Path(__file__).resolve().parent.parent / "port" / "ps5" / "sce_sys" / "icon0.png"
 
 # libc names the platform layer stands in for (tools/radv-link.sh: functions
 # no system module gives a title, or gives it a null import)
@@ -147,6 +151,13 @@ class Toolchain:
             # Mesa's weak entry points stay unresolved-weak rather than dynamic
             flags += ["--no-dynamic-linker", "-z", "nodynamic-undefined-weak"]
             extra_stubs = self.agc_stubs(build)
+        if any(str(obj).endswith("port_ps5_host_audio_ps5.c.o") for obj in objects):
+            obj = self.compile(Path("port/ps5/stubs/audioin.c"), build / "stubs" / "libSceAudioIn.o",
+                               ["-std=c11", "-O2", "-fPIC"])
+            stub = build / "stubs" / "libSceAudioIn.so"
+            subprocess.run([str(self.sdk / "bin" / "prospero-lld"), "--shared",
+                            "-soname", "libSceAudioIn.prx", "-o", str(stub), str(obj)], check=True)
+            extra_stubs.append(stub)
         mesa += [str(archive) for archive in archives]
         elf = build / "llvm-pie.elf"
         subprocess.run([str(self.sdk / "bin" / "prospero-lld"), "-T", str(self.tooling / "psbc" / "ps5-pie-unwind.ld"),
@@ -230,7 +241,7 @@ def main() -> None:
         toolchain.link(args.objects, args.build, radv_archive=mesa / "libvulkan_radeon.a" if args.mesa else None,
                        archives=[mesa / "libgallium.a", mesa / "libEGL.a"] if args.mesa else ())
     else:
-        icon = plain_icon(args.build / "icon0.png", (0x3a, 0x5f, 0x2b))
+        icon = TITLE_ICON
         toolchain.stage(args.build / "eboot.elf", args.folder, args.param, icon, [])
 
 

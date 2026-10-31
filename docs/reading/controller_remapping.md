@@ -30,7 +30,8 @@ Only one line can be edited at a time. A departing or disconnected owner cancels
 Chat remains subject to the game's existing multiplayer and host chat settings.
 Voice uses the existing shared microphone and first player's voice routing; any
 slot can hold its assigned Push to Talk button. Enable push-to-talk in voice settings.
-Keyboard and touch retain their own bindings.
+Keyboard and touch retain their own bindings. On PS5, holding the DualSense
+touchpad is also Push to Talk, fixed.
 
 Debug includes Camera Speed Up/Down, Camera / Player Switch, Camera Raise/Lower.
 These reuse buttons independently of gameplay. They apply only to an already

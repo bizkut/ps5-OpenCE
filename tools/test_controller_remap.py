@@ -75,6 +75,24 @@ int main(void) {
 }
 ''')
 
+def test_ps5_touchpad_talk_is_fixed_and_does_not_change_bindings(tmp_path):
+    run_c(tmp_path, COMMON + POLICY + INPUT + source('port/linux/src/controller_remap_input.c') + r'''
+int main(void) {
+ unsigned char b[25]; char text[512]; XINPUT_GAMEPAD pad={0};
+ unsetenv("HALO_PS5_TOUCHPAD_TALK"); controller_remap_defaults(b); assert(b[PAD_TALK]==255);
+ controller_remap_input(0,&pad,1); pad.wButtons=CONTROLLER_REMAP_TOUCHPAD_MASK;
+ controller_remap_input(0,&pad,1); assert(!controller_remap_talk() && pad.wButtons==CONTROLLER_REMAP_TOUCHPAD_MASK);
+ setenv("HALO_PS5_TOUCHPAD_TALK","1",1); controller_remap_defaults(b); assert(b[PAD_TALK]==255);
+ controller_remap_format(b,text,sizeof(text)); assert(!strstr(text,"touchpad"));
+ pad.wButtons=CONTROLLER_REMAP_TOUCHPAD_MASK; controller_remap_input(0,&pad,1);
+ assert(controller_remap_talk() && !pad.wButtons);
+ menu[0]=1; pad.wButtons=CONTROLLER_REMAP_TOUCHPAD_MASK; controller_remap_input(0,&pad,1);
+ assert(controller_remap_talk()); focused=0; assert(!controller_remap_talk()); focused=1;
+ pad.wButtons=0; controller_remap_input(0,&pad,1); assert(!controller_remap_talk());
+ return 0;
+}
+''')
+
 
 INPUT = r'''
 typedef unsigned char BYTE;
@@ -161,10 +179,10 @@ typedef enum {SDL_GAMEPAD_BUTTON_DPAD_UP,SDL_GAMEPAD_BUTTON_DPAD_DOWN,
  SDL_GAMEPAD_BUTTON_DPAD_LEFT,SDL_GAMEPAD_BUTTON_DPAD_RIGHT,SDL_GAMEPAD_BUTTON_START,
  SDL_GAMEPAD_BUTTON_BACK,SDL_GAMEPAD_BUTTON_LEFT_STICK,SDL_GAMEPAD_BUTTON_RIGHT_STICK,
  SDL_GAMEPAD_BUTTON_SOUTH,SDL_GAMEPAD_BUTTON_EAST,SDL_GAMEPAD_BUTTON_WEST,SDL_GAMEPAD_BUTTON_NORTH,
- SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER} SDL_GamepadButton;
+ SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,SDL_GAMEPAD_BUTTON_TOUCHPAD} SDL_GamepadButton;
 enum {SDL_GAMEPAD_AXIS_LEFT_TRIGGER,SDL_GAMEPAD_AXIS_RIGHT_TRIGGER,SDL_GAMEPAD_AXIS_LEFTX,
  SDL_GAMEPAD_AXIS_LEFTY,SDL_GAMEPAD_AXIS_RIGHTX,SDL_GAMEPAD_AXIS_RIGHTY};
-typedef struct {short axes[6];int buttons[14];} SDL_Gamepad;
+typedef struct {short axes[6];int buttons[15];} SDL_Gamepad;
 static int SDL_GetGamepadButton(SDL_Gamepad *p,int b){return p->buttons[b];}
 static short SDL_GetGamepadAxis(SDL_Gamepad *p,int a){return p->axes[a];}
 ''' + '\n'.join(function(original, name) for name in ['stick', 'merge_button', 'sdl_gamepad_state']) +
@@ -179,6 +197,7 @@ int main(void) {
   for(i=0;i<6;i++)device.axes[i]=(short)(n*931+i*9271);
   device.axes[0]&=32767;device.axes[1]&=32767;
   for(i=0;i<14;i++)device.buttons[i]=(n>>(i%7))&1;
+  device.buttons[SDL_GAMEPAD_BUTTON_TOUCHPAD]=0;
   sdl_gamepad_state(&device,&old);
   sdl_gamepad_state(&device,&physical);
   assert(!controller_remap_input(0,&physical,1));

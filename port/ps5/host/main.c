@@ -97,6 +97,7 @@ static void read_environment(void)
 	setenv("HALO_SAVE_ROOT", "/data/opence/save", 1);
 	setenv("MESA_LOADER_DRIVER_OVERRIDE", "zink", 0);
 	setenv("MESA_SHADER_CACHE_DISABLE", "true", 0);
+	setenv("HALO_PS5_TOUCHPAD_TALK", "1", 1);
 	file = fopen("/app0/opence-env.txt", "r");
 	if (file)
 	{

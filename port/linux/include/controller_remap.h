@@ -3,6 +3,8 @@
 
 #define CONTROLLER_REMAP_GAME_ACTIONS 10
 #define CONTROLLER_REMAP_BUTTONS 15
+/* Host-only bit in the intermediate XInput packet, removed before the game. */
+#define CONTROLLER_REMAP_TOUCHPAD_MASK 0x0100
 #define CONTROLLER_REMAP_TEXT 512
 #define CONTROLLER_REMAP_UNBOUND 255
 enum controller_remap_action

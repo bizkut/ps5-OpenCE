@@ -456,3 +456,47 @@ and `LoadExec(0)`, no fatal signal.
   average, 0.27 % by more than 8; the menu items' 38,769 bright pixels by
   3.2-3.4, 19.6 % by more than 8 (their glow is blended over the moving
   background, and the highlighted item pulses).
+
+## 2026-10-31: M4 input and audio on .41 (run1-run4)
+
+The run artifacts and klogs are in `build/ps5/evidence/m4/run1` and
+`run2`. Both ran the menu with audio enabled for 70 seconds and exited
+through `debug.exit_after` and `LoadExec(0)`, without a title fatal signal.
+Run1 eboot SHA-256:
+`d39f9387891003266bb2eb181e2ce3e4d662f9b68f702c37731548ae02d51b07`;
+run2:
+`7d8e4116bf06ebb2c6c1e2a3e2f460380d6b7f46d61c55927bb9690570e92a74`.
+
+- Run2 opened a pad for user 486509363; keyboard and mouse module loads and
+  initializations returned zero. AudioOut opened and six 10-second windows
+  reported 1876-1878 periods, zero underruns and zero errors.
+- During run1 the owner at the TV reported hearing sounds. Its klog recorded
+  a pad button mask `0x40`; whether that was the owner's action is unknown.
+- Run1 logged unrecognized keyboard binding names; run2 included the
+  scancode-name mapping and did not log those warnings. Keyboard and mouse
+  physical interaction, split screen, multiple users, hotplug and rumble
+  have not been qualified by these runs.
+
+Run3 (eboot SHA-256
+`dec10d3697a4a89b659c017970ebc392881d30c593991d0d95b5807e2d642031`)
+adds window shown and focus-gained events. Before the fix, the owner reported
+that the controller did nothing despite host stick logs; after it, the owner
+reported the controller working in run3. The klog recorded
+`PS5 window 1 focus gained event delivered`, pad button changes, and a
+connection to internet host `46b43b607cd0` (lines 1063-1066). At 790 s
+it exited through `LoadExec(0)` without the `debug.exit_after` marker; a
+menu Quit is possible but the log does not establish the cause.
+
+Run4 (eboot SHA-256
+`069640e380eed917b805a386aafdcfa07b513dfdfef9ff2b484b8f3d076e1384`):
+the owner reported “Push to talk works” in an internet game joined to host
+`46b43b607cd0`. The klog at lines 1158-1162 records touchpad press, AudioIn
+opening for the user, touchpad release and a nonzero microphone peak; lines
+1272-1279 record another press and release and nonzero input. The owner
+also reported “open mic works” and that the DualSense mute button cut their
+voice in open-mic mode. The microphone remained open and its klog showed
+nonzero input (for example lines 1333-1341), but does not identify the voice
+mode or correlate a mute transition with a particular input buffer. The
+mute button's exact AudioIn representation therefore remains unmeasured.
+Run4 ended after 366 s through `LoadExec(0)` after leaving the network host;
+the runner returned 3 because it did not see `debug.exit_after`.
