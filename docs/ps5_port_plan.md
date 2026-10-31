@@ -669,21 +669,22 @@ show PlayStation buttons without a setting changed; ten minutes of the
 first level pass with no AudioOut underrun in the klog; rumble is felt.
 
 Status (2026-10-31, `build/ps5/evidence/m4`, `port/ps5/FINDINGS.md`):
-`port/ps5/host/input_ps5.c` (pads per signed-in user through `scePadRead`,
-USB keyboards and mice) and `audio_ps5.c` (one AudioOut port, 48 kHz
-stereo S16, the game's audio callback on a guest stack) are in. Run1: the
-owner heard the game. Run2: the signed-in user's pad open, keyboard and
-mouse libraries started, AudioOut 1876-1878 periods per 10 s with no
-underrun and no error for a minute. Left: the owner's hands-on run
-(buttons, sticks, triggers, rumble, keyboard, the PlayStation prompts),
-split screen with four pads, ten minutes of the first level (`a10.map` is
-now in `/data/opence-dev/maps`), hot-plug and a second user, and voice
-chat's microphone (below). The owner's hands-on run: the host read the
-DualSense, but the game ignored it, because the game takes input only
-while its window has focus and learns it from SDL's
-`SDL_EVENT_WINDOW_FOCUS_GAINED`, which the PS5 host did not send
-(`sdl_platform.c:2534`, `controller_remap_input.c:121`); the host now sends
-it, with `SDL_EVENT_WINDOW_SHOWN`, when the window is made.
+`port/ps5/host/input_ps5.c` (a pad for each signed-in user through
+`scePadRead`, those signed in at start taken with
+`sceUserServiceGetLoginUserIdList`; USB keyboards and mice) and
+`audio_ps5.c` (one AudioOut port, 48 kHz stereo S16, the game's audio
+callback on a guest stack; the microphone through `libSceAudioIn`) are in.
+The first hands-on run: the host read the DualSense, but the game ignored
+it, because the game takes input only while its window has focus and
+learns it from SDL's `SDL_EVENT_WINDOW_FOCUS_GAINED`, which the PS5 host
+did not send (`sdl_platform.c:2534`, `controller_remap_input.c:121`); the
+host now sends it, with `SDL_EVENT_WINDOW_SHOWN`, when the window is made.
+Checked by the owner: the game's sound (run1), the menus and an internet
+game with the DualSense (run3), push to talk, open mic and the mute button
+(run4). Run5: both users signed in on the console got a pad, 119.88 Hz
+kept, no audio underrun. Left: split screen played with two or more pads,
+rumble, keyboard and mouse in play, ten minutes of the first level
+(`a10.map` is in `/data/opence-dev/maps`), hot-plug.
 
 Voice chat on the PS5 (the owner's choice, 2026-10-31) follows Settings >
 Audio > VOICE CHAT (`audio.voice_chat`), as on every port:
@@ -693,9 +694,13 @@ Audio > VOICE CHAT (`audio.voice_chat`), as on every port:
   (`ps5/title/voice-state.c`, `voice.cpp`), but the voice goes to OpenCE's
   voice chat, not to text. The game's settings have no controller binding
   for talking (only the keyboard's `controls.push_to_talk`), and none is
-  added: on the PS5 the touchpad is TALK (the remapping already reads it,
-  `CONTROLLER_REMAP_TOUCHPAD_MASK` from SDL's `SDL_GAMEPAD_BUTTON_TOUCHPAD`);
-  a USB keyboard's push-to-talk key also works.
+  added. The touchpad was not read by the game before; the PS5 build adds
+  it as a fixed TALK, only when the host sets `HALO_PS5_TOUCHPAD_TALK=1`
+  (which only the PS5 host does): `xinput_sdl.c` then reads SDL's
+  `SDL_GAMEPAD_BUTTON_TOUCHPAD` into a host-only bit
+  (`CONTROLLER_REMAP_TOUCHPAD_MASK`), which `controller_remap_input.c` turns
+  into talking and clears before the game sees the pad. Other ports are
+  unchanged. A USB keyboard's push-to-talk key also works.
 - OPEN MIC: the microphone is open while voice chat may talk and the game
   sends what it hears as speech, as Android's players use it. The
   DualSense's mute button cuts it: the console mutes the controller's
