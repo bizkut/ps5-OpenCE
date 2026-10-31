@@ -510,3 +510,14 @@ signed in on the console, 486509363 and 486509364, got a pad; the window at
 10-second windows (8.377 and 8.395 ms mean); AudioOut without underrun or
 error; `debug.exit_after` and `LoadExec(0)` after 40 s, no fatal signal.
 Split screen itself was not played.
+
+After run5 the owner started the game from the home screen twice and
+reported a crash. It was not one: run5's `/app0/opence-env.txt`, still on
+the console, set `HALO_EXIT_AFTER=40`, and `/data/opence-dev/opence.log`
+shows both sessions ending with `exiting after debug.exit_after` and
+`LoadExec exit (0)` after 40 s, the first one in a game's map. The release
+build (eboot `230f448f…`, "Halo: Combat Evolved (OpenCE)") is now installed
+with an env file that sets only the data and save roots
+(`/data/opence-dev`, where the owner's maps, settings and profiles are).
+Console runs leave such a file behind; after a test, put back one without
+`HALO_EXIT_AFTER`.
