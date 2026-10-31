@@ -16,6 +16,56 @@
 
 The game runs natively on **Windows, Linux, Android** and in the **web browser** with nothing to install. A macOS port is in progress. Worth noting that it is not an emulator, **the game's own code is compiled for each platform** with a new layer in place of the Xbox's hardware. Runs on OpenGL (Android is on OpenGL ES and WebGL 2 in the browser). Sound, input, gamepads are all handled through SDL3. The game currently draws a frame every refresh of your display with Smooth Motion enabled, while the simulation runs at 30 ticks just like the original Xbox. 
 
+## PlayStation 5 (this fork)
+
+This fork, [bizkut/ps5-OpenCE](https://github.com/bizkut/ps5-OpenCE), adds a
+**native PS5 build** of OpenCE: a homebrew title (`PPSA99117`), not an
+emulator and not Wine. The game's own code runs on the console, drawn
+through OpenGL ES on Zink and the PS5's RADV Vulkan driver.
+
+- **4K at 120 fps with VRR**: the game draws at 3840x2160 and presents at
+  119.88 Hz with variable refresh rate; in menus and multiplayer it keeps
+  the display's pace (8.34 ms frames), with an occasional stutter the first
+  time something is drawn (the shader cache is not kept yet).
+- **DualSense** with PlayStation button prompts; a USB keyboard and mouse
+  are read too.
+- **Multiplayer**: system link and internet play (the server browser,
+  joining and hosting games), with **voice chat**: hold the touchpad to
+  talk (Settings > Audio > VOICE CHAT: PUSH TO TALK), or OPEN MIC, which the
+  DualSense's mute button cuts.
+- 48 kHz audio.
+
+This is an early preview. Checked on a PS5 so far: the menus, a campaign
+level loading, multiplayer games on the internet, the controller, sound and
+voice chat. Not checked yet: split screen with several controllers,
+rumble, the keyboard and mouse in play, saved games and settings kept
+across restarts. The port's plan and what was measured on the console:
+[docs/ps5_port_plan.md](docs/ps5_port_plan.md),
+[port/ps5/FINDINGS.md](port/ps5/FINDINGS.md).
+
+### Installing on a PS5
+
+You need a PS5 that runs homebrew titles, with ShadowMountPlus loaded (the
+game reads its data from `/data`) and an FTP server on the console, and
+your own Xbox disc image of Halo: Combat Evolved.
+
+1. Download `OpenCE-PS5-<version>.zip` from
+   [Releases](https://github.com/bizkut/ps5-OpenCE/releases) (or install
+   OpenCE from ProsperoStore once it is listed there).
+2. Copy the `PPSA99117` folder in the zip to `/data/homebrew/PPSA99117` on
+   the console over FTP.
+3. Get the game's `maps` folder out of your disc image on a computer: start
+   OpenCE's Linux or Windows build once with the disc image (it writes
+   `maps` next to the executable, see below), or use `extract-xiso`.
+4. Copy that `maps` folder to `/data/opence/maps` on the console over FTP.
+   `/data/opence` is the game's folder on the PS5: its settings
+   (`config.toml`), saved games, `custom_maps` and `mods` go there too.
+5. Start OpenCE from the home screen.
+
+The PS5 build is built from this repository with `python tools/ps5_deps.py`,
+`python tools/ps5_mesa.py`, `python configure.py` and `ninja ps5`
+(`build/ps5/title/PPSA99117`); the plan has the details.
+
 <img width="1284" height="1007" alt="The game running on Windows" src="https://github.com/user-attachments/assets/0a4412e1-f6d3-48ed-8e17-0a374c2122f1" />
 <p align="center"><em>OpenCE running on Windows (release build)</em></p>
 
