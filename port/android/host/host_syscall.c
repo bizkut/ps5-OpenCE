@@ -33,7 +33,12 @@ The exceptions are
 #include <time.h>
 #include <unistd.h>
 
+#ifdef __ANDROID__
 #include <android/log.h>
+#else
+long host_translate_syscall(long long number);
+int host_linux_stat_syscall(long number, long long a, long long b, long long c, long long d, long long *result);
+#endif
 
 /* the guest's structures */
 struct guest_timespec
@@ -100,7 +105,11 @@ static void log_bytes(int fd, const char *bytes, size_t size)
 		if (c == '\n' || stream->length == sizeof(stream->line) - 1)
 		{
 			stream->line[stream->length] = 0;
+#ifdef __ANDROID__
 			__android_log_write(fd == 2 ? ANDROID_LOG_WARN : ANDROID_LOG_INFO, "halo", stream->line);
+#else
+			host_logf(fd == 2 ? HOST_LOG_WARN : HOST_LOG_INFO, "%s", stream->line);
+#endif
 			stream->length = 0;
 			if (c == '\n')
 				continue;
@@ -185,6 +194,14 @@ static long guest_futex(uint64_t address, int operation, uint32_t value, uint64_
 long long host_syscall(long long number, long long a, long long b, long long c,
 	long long d, long long e, long long f)
 {
+#ifndef __ANDROID__
+	long long translated_result;
+	number = host_translate_syscall(number);
+	if (number < 0)
+		return -ENOSYS;
+	if (host_linux_stat_syscall(number, a, b, c, d, &translated_result))
+		return translated_result;
+#endif
 	switch (number)
 	{
 	case SYS_write:

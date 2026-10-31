@@ -2,8 +2,8 @@
 GUEST_HOST.H
 
 The host services the guest imports (the guest's view; the host defines
-them in port/android/host). Every name here must also be listed in
-port/android/host_imports.list, which generates the import stubs.
+them in port/android/host). Each name belongs in the common
+port/android/host_imports.list or the Android-only android_imports.list.
 
 Parameter types follow the rules in halo_android_abi.h: 32-bit values are
 int or unsigned int, 64-bit values long long, and pointers are passed as

@@ -22,6 +22,7 @@ end.
 | `port/windows/` | The Windows build's own files (`win32_*.c`, headers) |
 | `port/android/` | The Android app: the guest runtime, the host library (`host/`), the Java app (`app/`), host imports (`host_imports.list`) |
 | `port/web/` | The web build: its runtime (`src/`: entry, sockets inside the page, memory watch), the page and its service worker (`site/`), the SDL port, tests |
+| `port/ps5/` | The PS5 port (`docs/ps5_port_plan.md`, `port/ps5/FINDINGS.md`): the x32 guest's libc overrides and linker script (`guest/`), the Linux host that runs it (`host/linux/`), the console probes (`probe/`), Mesa patches, the title's `param.json` |
 | `port/assets/` | What the builds embed or ship: high-res HUD (`hud/`), fonts, titles, menus (`menus/`), icons, network brokers and master servers, the dedicated server's web page (`server_ui/`) |
 | `port/third_party/` | Vendored libraries, each with a README naming its upstream, version and checksum |
 | `port/tools/` | Stand-alone tools (`cache_file_report.c`) |
@@ -40,6 +41,7 @@ ninja linux                    # build/linux/halo
 ninja android                  # the Android guest image and native libraries
 ninja android_apk              # the APK (Gradle)
 ninja web                      # build/web/site (Emscripten: port/web/README.md)
+ninja ps5_linux_host           # the PS5 port's x32 guest under a Linux host: build/ps5/linux/halo-x32
 ninja windows                  # on Windows, or on Linux after configure.py --windows-cross
 python tools/ci_build.py linux release   # what CI builds
 ```
@@ -68,9 +70,10 @@ python tools/ci_build.py linux release   # what CI builds
 | Define | Set by | Meaning |
 | --- | --- | --- |
 | `HALO_ANDROID` | Android | The app: its display, input, files, lifecycle and 128 MB memory window |
-| `HALO_GLES` | Android, web | The OpenGL ES renderer |
-| `HALO_GUEST` | Android | The guest's ABI: ILP32 code in a 64-bit process, its C library the guest's musl, SDL reached through `host_imports.list` (the PS5 port's x32 guest shares it: `docs/ps5_port_plan.md`) |
+| `HALO_GLES` | Android, web, PS5 | The OpenGL ES renderer |
+| `HALO_GUEST` | Android, PS5 | The guest's ABI: ILP32 code in a 64-bit process, its C library the guest's musl, SDL reached through `host_imports.list` |
 | `HALO_ARM64_GUEST` | Android | The guest's instruction set (AArch64) and the Darwin target it is compiled for |
+| `HALO_X32_GUEST` | PS5 (the guest and its hosts) | The guest is x32 code, an ELF32 image at `0x7c000000` |
 | `HALO_WEB` | Web | The browser: its frames, storage, sockets and WebGL 2's limits (with `HALO_GLES`, not `HALO_ANDROID`) |
 | `HALO_WINDOWS` | Windows (`halo_windows_prefix.h`) | The Windows build |
 | `HALO_RELEASE` | `--release` | No assertions checked |

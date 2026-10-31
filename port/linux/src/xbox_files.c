@@ -112,7 +112,7 @@ const char *platform_data_root(void)
 						snprintf(root, sizeof(root), "%s", executable);
 				}
 			}
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID) && !defined(HALO_WEB)
 			/* (a dedicated server asks nobody: it says what is missing and
 			stops, server_mode.c) */
 			if (!has_maps(root) && executable_directory[0] && !halo_server_mode() &&

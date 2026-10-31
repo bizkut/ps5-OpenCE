@@ -29,7 +29,7 @@ update.h's: posix_update.c on Linux, win32_update.c on Windows.
 #include "port_config.h"
 #include "update.h"
 
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID) && !defined(HALO_WEB)
 
 #include "zlib_prefixed.h"
 

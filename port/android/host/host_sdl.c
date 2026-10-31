@@ -531,7 +531,12 @@ int host_sdl_open_url(const char *url)
 
 int host_sdl_show_toast(const char *message, int duration, int gravity, int x, int y)
 {
+#ifdef __ANDROID__
 	return SDL_ShowAndroidToast(message, duration, gravity, x, y) ? 1 : 0;
+#else
+	(void)duration; (void)gravity; (void)x; (void)y;
+	return SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Halo", message, NULL);
+#endif
 }
 
 /* ---------- a message for the player (a host of another network version) */

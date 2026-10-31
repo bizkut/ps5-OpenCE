@@ -376,47 +376,53 @@ a CPU limit (the game, Zink's command recording) frame generation.
 
 ### The guest/host boundary
 
-The Android files are shared, not copied. Code that only differs by
-architecture is split:
+The Android files are shared in place, not copied or moved (M1, built):
 
-|Android today|Becomes|
+|Shared|How the x32 guest uses it|
 |---|---|
-|`port/android/guest/runtime/*`|`port/guest/runtime/*` (both guests); architecture parts in `port/guest/arch/arm64_32` and `port/guest/arch/x32`|
-|`port/android/guest/libc` (musl subset, `arch/arm64_32`)|`port/guest/libc` with `arch/arm64_32` and `arch/x32` (from upstream musl, MIT, recorded per `port/third_party` rules)|
-|`port/android/guest/guest.ld`|`port/guest/guest.ld`, one per output format|
-|`port/android/host/host_{loader,memory,thread,syscall,sdl,gl,debug}.c`|shared host code in `port/guest_host/`; Android and PS5 parts beside it|
-|`port/android/host_imports.list`|one list plus per-platform lists (`host_android_*`, `host_touch_*` stay Android; `host_ps5_*` for the PS5)|
-|`tools/android_imports.py`, `android_gl_stubs.py`, `android_posix_stubs.py`, `android_abi_check.py`|`tools/guest_*.py` with an `aarch64` and an `x32` stub emitter|
+|`port/android/guest/runtime/*`|compiled as they are; the image header's section and Android's render policy behind `HALO_X32_GUEST`/`HALO_ANDROID`|
+|`port/android/guest/libc/arch/arm64_32` (musl 1.2.5 subset)|`port/ps5/guest/libc/arch/x32` holds only what x32 overrides (atomics, thread pointer, relocations, `alltypes`, `fenv`, `float`, `setjmp`, from musl's `arch/x32`, MIT); arm64_32's follows it in the include path, so both guests share one kernel interface (asm-generic system call numbers and structures) and one host dispatcher|
+|`port/android/guest/guest.ld`|`port/ps5/guest/guest.ld`: the image at `0x7c000000`, at most 64 MiB, constructors from `.init_array`|
+|`port/android/host/host_{loader,memory,thread,syscall,sdl,gl,debug,watch_hash,https}.c`|compiled as they are for the Linux host; ELF32 x32 images behind `HALO_X32_GUEST`, Android's own parts (ART, properties, log, toast) behind `__ANDROID__`, registers behind `__aarch64__`/`__x86_64__`; `port/ps5/host/linux/` adds `main.c`, the stat conversion and, generated, the asm-generic to x86-64 system call numbers|
+|`port/android/host_imports.list`|the common imports; Android's own (`host_android_*`, `host_gesture_insets`, `host_touch_*`) moved to `port/android/android_imports.list`, which only Android's generator reads|
+|`tools/android_imports.py`, `android_gl_stubs.py`, `android_posix_stubs.py`|an `--arch x32` mode each; Android's outputs byte-identical|
+|`tools/android_build.py`'s guest graph|one `generate_guest_build` for both guests; `tools/ps5_build.py` gives it the x32 flags, `tools/ps5_host_build.py` builds the Linux host|
 
-`HALO_ARM64_GUEST` today means both "ILP32 guest in a 64-bit process" and
-"AArch64". The port separates them: `HALO_GUEST` for the first (the
-`bss_seg` pragmas, the frame-record stack walk, the file I/O through the
-guest's libc, `dsound_sdl.c`'s callback size, the capacities in
-`halo_port_capacity.h`), `HALO_ARM64_GUEST` and a new `HALO_X32_GUEST` for
-the instruction set (`msvc_crt.c`'s floating-point control, the call-site
-offset in `stack_walk_windows.c:345`, which is `-4` on AArch64 and `-1` is
-enough on x86). An x86-64 frame record (saved `rbp`, return address, 8 bytes
-each) has the AArch64 record's layout, so `stack_walk_windows.c:737-740`
-serves both. Each change to `source/` keeps its `port:` comment.
+`HALO_GUEST` is the guest's ABI (ILP32 in a 64-bit process, its own musl,
+SDL only through the host's imports); `HALO_ARM64_GUEST` and
+`HALO_X32_GUEST` are the instruction sets (the Darwin `bss_seg` pragmas,
+`msvc_crt.c`'s FPCR code and the BL call-site offset are AArch64's; x32
+takes the x86 branches). The 128 MB window and the Xbox-sized caches follow
+`HALO_ANDROID`: the x32 guest has the desktop's 512 MB window
+(`0x80000000`-`0xA0000000`) and caches. An x86-64 frame record (saved
+`rbp`, return address, 8 bytes each) has the AArch64 record's layout, so the
+stack walk serves both under `HALO_GUEST`. Each change to `source/` keeps
+its `port:` comment.
 
-The x32 stubs:
+The x32 boundary:
 
 - guest to host: `jmp *slot(%rip)` through an 8-byte import slot the loader
-  fills; the generator zero-extends 32-bit pointer arguments before host
-  functions that take real pointers (GL, posix), from the declared types;
+  fills. Clang's x32 callers zero-extend pointer arguments and its callees
+  rely on it (a forwarding function compiles to a bare `jmp`), so the stubs
+  pass registers through; only types whose width differs (`GLintptr`,
+  `GLsizeiptr`, `GLsync`) go through the generated wrappers, as on Android;
 - host to guest (the audio worker's callback, thread entry): the callback
   runs on a thread with a guest stack (`port/android/host/host_sdl.c`'s design);
 - host pointers above 4 GB never reach the guest: mapped GL buffers are
-  copied (`host_gl_buffer_write`, `host_gl_read_buffer`), as on Android.
+  copied (`host_gl_buffer_write`, `host_gl_read_buffer`), as on Android;
+- the guest's code paths that call desktop-only SDL (display modes,
+  cursors, device lists, the updater, the dedicated server) take Android's
+  path under `HALO_GUEST`; no `host_sdl_*` import was added, so the PS5 host
+  implements exactly the list Android's does, less Android's own.
 
 ### Repository changes
 
 |Path|Contents|
 |---|---|
-|`configure.py`|`--ps5` and `--ps5-sdk`, the `ps5` and `ps5_linux_host` targets|
-|`tools/ps5_build.py`|the Ninja graph: guest objects, image, host objects, eboot, SELF, title folder, assets (from `tools/android_build.py`'s structure)|
+|`configure.py`|the `ps5_guest` and `ps5_linux_host` targets (built); `--ps5-sdk` and the `ps5` title target in M2|
+|`tools/ps5_build.py`, `tools/ps5_host_build.py`|the x32 guest's graph (through `tools/android_build.py`'s `generate_guest_build`) and the Linux host's: `build/ps5/halo_guest.elf`, `build/ps5/linux/halo-x32` with the image linked in and `libSDL3.so.0` beside it, as the desktop build's; the title's eboot, SELF and folder in M2|
 |`tools/ps5_deps.py`, `port/ps5/deps.lock`|pinned exports and builds: SDK, Mesa (in the cached Docker image), Mbed TLS, zlib|
-|`port/ps5/host/`|`host_main.c` (start, paths, splash, exit), `host_memory_ps5.c`, `host_loader_ps5.c`, `host_egl.c`, `host_ps5_input.c`, `host_ps5_audio.c` (D6)|
+|`port/ps5/host/`|`linux/` (built); the PS5's own beside it: start, paths, splash, exit, memory, EGL window, `host_ps5_input.c`, `host_ps5_audio.c` (D6)|
 |`port/ps5/patches/mesa/`|patches over the pinned Mesa export|
 |`port/ps5/sce_sys/`|`param.json` (PPSA99117, `attribute3` `0x40040`), `icon0.png` from the title art (`tools/title_assets.py`)|
 |`port/ps5/README.md`|the PS5 build, installation, the data folder, settings, finding problems (in the style of `port/android/README.md`)|
@@ -463,9 +469,10 @@ D4, D6, D8, D7.
 
 ### M1. The guest builds, and runs under Linux
 
-- Split `HALO_ARM64_GUEST` (above); the Android build must be byte-for-byte
-  unchanged in its game objects except where the macro moved
-  (`ninja android` and its tests pass).
+- Split `HALO_ARM64_GUEST` (above); Android's code unchanged: shown by
+  preprocessing every changed file with Android's defines and by Android's
+  `build.ninja` text and generator outputs, since this machine has no NDK
+  (`ninja android` and its tests run where one is).
 - musl x32 with host system calls; guest runtime for x32; x32 stub emitters.
 - `ninja ps5_linux_host`: the Linux host loads `halo_guest.elf` and plays.
 
@@ -475,6 +482,17 @@ Done when: `tools/harness`, `tools/stagekit/tests` and
 report no mismatches; the guest image has no x87 instruction outside
 `long double` code; a Linux-hosted x32 game and `build/linux/halo` finish a
 system link game in `net_compare.py` without divergence.
+
+Status (2026-10-31, `port/ps5/FINDINGS.md`): built and run. The game plays
+under the Linux host (main menu, a hosted game on bloodgulch); the x32 and
+i386 builds play bloodgulch in step in `net_compare.py`, each hosting;
+`tools/stagekit/tests` pass with `HALO_GAME=build/ps5/linux/halo-x32`; the
+x87 instructions are in 17 musl functions (long double, `fenv`, `printf`,
+`strtod`), none in the game's; the boundary structures' layouts match
+arm64_32's (compared by hand). Left: an x32 mode for `tools/harness` (it
+compiles engine functions natively with `-m32`, not the game binary), an
+x32 run of `tools/android_abi_check.py`, and `tools/guest_layout_check.py`
+in place of the hand comparison.
 
 ### M2. Title shell
 

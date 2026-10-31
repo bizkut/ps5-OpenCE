@@ -43,7 +43,7 @@ enum
 	_thread_exited,
 };
 
-#define DEFAULT_STACK_SIZE (1024 * 1024)
+#define GUEST_DEFAULT_STACK_SIZE (1024 * 1024)
 
 static struct guest_thread main_thread;
 
@@ -141,7 +141,7 @@ int pthread_create(pthread_t *restrict result, const pthread_attr_t *restrict at
 	void *(*start)(void *), void *restrict argument)
 {
 	struct guest_thread *thread = calloc(1, sizeof(*thread));
-	size_t stack_size = DEFAULT_STACK_SIZE;
+	size_t stack_size = GUEST_DEFAULT_STACK_SIZE;
 	int error;
 
 	if (!thread)

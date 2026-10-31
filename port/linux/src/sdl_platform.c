@@ -38,7 +38,7 @@ void win32_window_borderless_apply(SDL_Window *window);
 #include <dlfcn.h>
 #include <unistd.h>
 #endif
-#ifdef HALO_ANDROID
+#if defined(HALO_GUEST) || defined(HALO_ANDROID)
 #include <errno.h>
 #include <time.h>
 #endif
@@ -132,7 +132,7 @@ extern const unsigned long platform_menu_cursor_size;
 #endif
 #endif
 
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID) && !defined(HALO_WEB)
 /* the maps folder checked to hold the Xbox maps (platform_maps_folder_check).
 When it holds Halo PC's instead, or no ui.map, the player is told where each
 kind goes and the game quits, rather than failing to load Halo PC's ui.map
@@ -246,7 +246,7 @@ BOOL platform_sdl_initialize(void)
 	controller emulation in xinput_sdl.c) */
 	SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
 #endif
-#if defined(__linux__) && !defined(HALO_ANDROID)
+#if defined(__linux__) && !defined(HALO_GUEST) && !defined(HALO_ANDROID)
 	/* input.playstation_kernel_driver: a PlayStation pad through the
 	kernel's driver of it (hid-playstation's, hid-sony's: its buttons,
 	sticks, triggers and rumble) where the kernel has one, not SDL's own:
@@ -261,7 +261,7 @@ BOOL platform_sdl_initialize(void)
 			SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS4, "0");
 	}
 #endif
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID) && !defined(HALO_WEB)
 	/* a dedicated server (server_mode.c) runs where there is no display,
 	sound or controller (a service, a container): SDL's drivers that need
 	none, and its events alone */
@@ -288,7 +288,7 @@ BOOL platform_sdl_initialize(void)
 		return FALSE;
 	}
 	platform_sdl_started = TRUE;
-#ifndef HALO_ANDROID
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID)
 	/* found (or offered to the player, platform_offer_game_data) before the
 	game's window opens, and checked to be the Xbox maps (a dedicated
 	server's were, by server_mode.c) */
@@ -317,7 +317,7 @@ BOOL platform_sdl_initialize(void)
 	return TRUE;
 }
 
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID) && !defined(HALO_WEB)
 /* ---------- first start without game data (xbox_files.c; the web page
 imports it itself) */
 
@@ -615,7 +615,7 @@ int halo_interpolation_enabled(void)
 	return enabled;
 }
 
-#ifndef HALO_ANDROID
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID)
 /* the display mode (display.mode, else display.fullscreen's: borderless or
 the window) */
 enum
@@ -916,6 +916,20 @@ int platform_window_sizes(long *widths, long *heights, int maximum)
 }
 
 #else
+#if defined(HALO_GUEST) && !defined(HALO_ANDROID)
+BOOL platform_screen_mode(long *width, long *height)
+{
+	int w = 0, h = 0;
+
+	if (!platform_window || !strcmp(config_string("display.resolution_scaling"), "original") ||
+		!SDL_GetWindowSizeInPixels(platform_window, &w, &h) || w <= 0 || h <= 0)
+		return FALSE;
+	*width = w;
+	*height = h;
+	return TRUE;
+}
+#endif
+
 int platform_display_resolutions(long *widths, long *heights, int maximum)
 {
 	(void)widths;
@@ -937,7 +951,7 @@ int platform_window_sizes(long *widths, long *heights, int maximum)
 /* ---------- audio devices (Settings > Audio: audio.output_device,
 audio.input_device) */
 
-#ifndef HALO_ANDROID
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID)
 int platform_audio_devices(int recording, char (*names)[PLATFORM_AUDIO_DEVICE_NAME_SIZE], int maximum)
 {
 	SDL_AudioDeviceID *devices;
@@ -1000,7 +1014,7 @@ SDL_AudioDeviceID platform_audio_device(int recording, const char *name)
 }
 #endif
 
-#ifndef HALO_ANDROID
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID)
 /* the window's size (platform_window_size_setting), as the window was made
 or last resized: platform_display_apply */
 static long platform_window_width = -1, platform_window_height = -1;
@@ -1051,6 +1065,13 @@ BOOL platform_video_hdr(float *sdr_white, float *headroom)
 	if (!(*headroom >= 1.0f))
 		*headroom = 1.0f;
 	return enabled;
+}
+#elif defined(HALO_GUEST) && !defined(HALO_ANDROID)
+BOOL platform_video_hdr(float *sdr_white, float *headroom)
+{
+	*sdr_white = 1.0f;
+	*headroom = 1.0f;
+	return FALSE;
 }
 #endif
 
@@ -1221,7 +1242,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	platform_video_tried = TRUE;
 	if (!platform_sdl_initialize())
 		return FALSE;
-#ifndef HALO_ANDROID
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID)
 #ifdef HALO_WEB
 	/* (a browser's canvas has 8 bits a channel) */
 	platform_float_window = FALSE;
@@ -1253,7 +1274,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 #endif
 	if (config_boolean("debug.gl_debug"))
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
-#if !defined(HALO_ANDROID) && !defined(_WIN32)
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID) && !defined(_WIN32)
 	/* Mesa's GL thread: the renderer makes thousands of GL calls a frame
 	and never waits for their results, so handing them to a thread of
 	their own takes a fifth of the main thread's time off it. It leaves an
@@ -1261,7 +1282,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	setenv("mesa_glthread", "true", 0);
 #endif
 
-#ifdef HALO_ANDROID
+#if defined(HALO_GUEST) || defined(HALO_ANDROID)
 	{
 		int scale = (int)config_integer("display.window_scale");
 
@@ -1285,7 +1306,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 #endif
 	if (!platform_window)
 	{
-#ifndef HALO_ANDROID
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID)
 		if (platform_float_window_refused())
 			return platform_video_initialize(width, height);
 #endif
@@ -1315,9 +1336,11 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	menu_cursor_height = 0;
 	menu_cursor_fit();
 #endif
+#ifndef HALO_GUEST
 	platform_fullscreen_requested = platform_fullscreen_setting();
 	platform_window_mode = platform_display_mode();
 	platform_fullscreen_kind_apply();
+#endif
 #endif
 #ifdef HALO_WINDOWS
 	win32_window_borderless_apply(platform_window);
@@ -1332,7 +1355,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 		platform_gl_context = SDL_GL_CreateContext(platform_window);
 	}
 #endif
-#ifndef HALO_ANDROID
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID)
 	if (!platform_gl_context && platform_float_window_refused())
 		return platform_video_initialize(width, height);
 #endif
@@ -1347,7 +1370,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	platform_swap_interval(config_boolean("display.vsync") ? 1 : 0);
 	platform_event_thread = SDL_GetCurrentThreadID();
 	platform_log("OpenGL %s on %s", (const char *)glGetString(GL_VERSION), (const char *)glGetString(GL_RENDERER));
-#if defined(__linux__) && !defined(HALO_ANDROID)
+#if defined(__linux__) && !defined(HALO_GUEST) && !defined(HALO_ANDROID)
 	{
 		const char *renderer = (const char *)glGetString(GL_RENDERER);
 
@@ -1357,7 +1380,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 				"refer to \"NVIDIA on Wayland\" in port/linux/README.md", SDL_GetCurrentVideoDriver());
 	}
 #endif
-#ifndef HALO_ANDROID
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID)
 	{
 		float sdr_white, headroom;
 		BOOL hdr = platform_video_hdr(&sdr_white, &headroom);
@@ -1377,7 +1400,7 @@ and borderless's resolution are taken up between frames
 (halo_screen_commit) */
 void platform_display_apply(void)
 {
-#ifndef HALO_ANDROID
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID)
 	int mode = platform_display_mode();
 	long width, height;
 
@@ -1431,7 +1454,7 @@ static Uint64 frame_interval_ns(void)
 	rate = (float)maximum;
 	if (!maximum)
 	{
-#ifdef HALO_ANDROID
+#if defined(HALO_GUEST) || defined(HALO_ANDROID)
 		/* the app passes the display's refresh rate (port/android/host/host_main.c):
 		the guest cannot ask SDL for the display mode */
 		const char *refresh = getenv("HALO_DISPLAY_REFRESH");
@@ -1449,7 +1472,7 @@ static Uint64 frame_interval_ns(void)
 
 /* (the swap's sound thread and the unfocused window's pacing: the desktop's
 alone) */
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID) && !defined(HALO_WEB)
 static Uint64 refresh_period_ns(void)
 {
 	SDL_DisplayID display;
@@ -1562,7 +1585,7 @@ void web_frame_shown(void);
 void web_js_post(int kind, const char *text);
 #endif
 
-#ifdef HALO_ANDROID
+#if defined(HALO_GUEST) || defined(HALO_ANDROID)
 /* monotonic nanoseconds, and a sleep of that long: the guest's SDL bridge has
 no SDL_GetTicksNS nor SDL_DelayPrecise, so use musl's clocks */
 static Uint64 platform_ticks_ns(void)
@@ -1589,7 +1612,7 @@ void platform_video_swap(void)
 	Uint64 swap_time;
 	static Uint64 next_frame;
 	Uint64 interval, now;
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID) && !defined(HALO_WEB)
 	SDL_WindowFlags window_flags;
 	int focused;
 	int vsync;
@@ -1600,7 +1623,7 @@ void platform_video_swap(void)
 	Keep borderless on the desktop before the driver presents a frame. */
 	win32_window_borderless_apply(platform_window);
 #endif
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID) && !defined(HALO_WEB)
 	SDL_PumpEvents();
 	window_flags = platform_window ? SDL_GetWindowFlags(platform_window) : 0;
 	focused = platform_window && (window_flags & SDL_WINDOW_INPUT_FOCUS) != 0 &&
@@ -1631,20 +1654,20 @@ void platform_video_swap(void)
 	web_frame_shown();
 #endif
 	interval = frame_interval_ns();
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID) && !defined(HALO_WEB)
 	if (!interval && vsync && !focused)
 		interval = refresh_period_ns();
 #endif
 	if (!interval)
 		return;
-#ifdef HALO_ANDROID
+#if defined(HALO_GUEST) || defined(HALO_ANDROID)
 	now = platform_ticks_ns();
 #else
 	now = SDL_GetTicksNS();
 #endif
 	if (next_frame > now)
 	{
-#ifdef HALO_ANDROID
+#if defined(HALO_GUEST) || defined(HALO_ANDROID)
 		platform_sleep_ns(next_frame - now);
 #else
 		SDL_DelayPrecise(next_frame - now);
@@ -1655,7 +1678,7 @@ void platform_video_swap(void)
 	next_frame = now - next_frame > interval ? now + interval : next_frame + interval;
 }
 
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID) && !defined(HALO_WEB)
 /* when SDL_SetWindowRelativeMouseMode has no XInput2 (32-bit libSDL3 on X11
 without 32-bit libXi.so.6), the mouse is held with a hidden cursor, a window
 grab and a warp back to the middle after each move */
@@ -1673,7 +1696,7 @@ void platform_mouse_capture(BOOL capture)
 #endif
 	if (!platform_window)
 		return;
-#if defined(HALO_ANDROID) || defined(HALO_WEB)
+#if defined(HALO_GUEST) || defined(HALO_ANDROID) || defined(HALO_WEB)
 	SDL_SetWindowRelativeMouseMode(platform_window, capture ? true : false);
 #else
 	/* (without the focus, the mouse is taken when the focus comes back:
@@ -2072,7 +2095,7 @@ static void platform_show_pending_message(void)
 	pthread_mutex_unlock(&platform_message_lock);
 	if (!pending)
 		return;
-#ifdef HALO_ANDROID
+#if defined(HALO_GUEST) || defined(HALO_ANDROID)
 	SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING, title, text, NULL);
 #else
 	{
@@ -2094,7 +2117,7 @@ static void platform_show_pending_message(void)
 menus' Quit: port/linux/game/menu_functions.c); on Android at once */
 void platform_request_quit(void)
 {
-#ifdef HALO_ANDROID
+#if defined(HALO_GUEST) || defined(HALO_ANDROID)
 	/* (the guest has no SDL_PushEvent: exit ends the process, host_exit) */
 	exit(EXIT_SUCCESS);
 #else
@@ -2119,8 +2142,12 @@ static void scoreboard_pointer_start(void)
 	memset(mouse_buttons_pressed, 0, sizeof(mouse_buttons_pressed));
 	input_state.mouse_dx = input_state.mouse_dy = 0.0f;
 	platform_mouse_capture(FALSE);
+#ifdef HALO_GUEST
+	SDL_GetWindowSizeInPixels(platform_window, &width, &height);
+#else
 	SDL_GetWindowSize(platform_window, &width, &height);
 	SDL_WarpMouseInWindow(platform_window, width * 0.5f, height * 0.5f);
+#endif
 	scoreboard_pointer.x = width * 0.5f;
 	scoreboard_pointer.y = height * 0.5f;
 }
@@ -2233,7 +2260,7 @@ static void platform_pump_events_headless(void)
 	/* (a dedicated server stops itself: server_director.c) */
 	if (!halo_server_mode())
 		exit_after_check();
-#ifndef HALO_ANDROID
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID)
 	if (config_string("debug.update_answer")[0])
 		updater_poll(NULL);
 #endif
@@ -2252,7 +2279,7 @@ void platform_pump_events(void)
 	SDL_Event event;
 	static BOOL looked_at_clipboard;
 	BOOL look_at_clipboard = !looked_at_clipboard;
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID) && !defined(HALO_WEB)
 	BOOL mouse_needs_warp = FALSE;
 #endif
 	static int null_renderer = -1;
@@ -2272,7 +2299,7 @@ void platform_pump_events(void)
 #if !defined(HALO_ANDROID) && !defined(HALO_GLES)
 	menu_cursor_fit();
 #endif
-#ifndef HALO_ANDROID
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID)
 	updater_poll(platform_window);
 	/* (Settings > Audio's output device, as it changes: dsound_sdl.c) */
 	dsound_sdl_output_device_check();
@@ -2326,7 +2353,7 @@ void platform_pump_events(void)
 				platform_mouse_capture(!input_state.mouse_released && !input_state.ui_pointer &&
 					!scoreboard_pointer_active);
 			}
-#ifndef HALO_ANDROID
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID)
 			/* F11 switches between fullscreen and the window (SDL keeps the
 			window's size and place while fullscreen) */
 			if (event.key.down && !event.key.repeat && event.key.scancode == SDL_SCANCODE_F11)
@@ -2359,7 +2386,7 @@ void platform_pump_events(void)
 				ui_pointer.moved = TRUE;
 				break;
 			}
-#ifndef HALO_WEB
+#if !defined(HALO_GUEST) && !defined(HALO_WEB)
 			if (mouse_warp_capture)
 			{
 				if ((int)event.motion.x == mouse_warp_x && (int)event.motion.y == mouse_warp_y)
@@ -2492,7 +2519,7 @@ void platform_pump_events(void)
 			/* (the scoreboard's pointer goes; the mouse is taken back for
 			the aim as the window has the focus again) */
 			scoreboard_pointer_active = FALSE;
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID) && !defined(HALO_WEB)
 			if (mouse_warp_capture)
 			{
 				mouse_warp_capture = FALSE;
@@ -2571,7 +2598,7 @@ void platform_pump_events(void)
 			break;
 		}
 	}
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID) && !defined(HALO_WEB)
 	if (mouse_warp_capture && mouse_needs_warp && !input_state.ui_pointer &&
 		!scoreboard_pointer_active && !input_state.mouse_released)
 	{
@@ -2659,8 +2686,12 @@ void platform_ui_pointer_set_active(BOOL active)
 	{
 		int width, height;
 
+#ifdef HALO_GUEST
+		SDL_GetWindowSizeInPixels(platform_window, &width, &height);
+#else
 		SDL_GetWindowSize(platform_window, &width, &height);
 		SDL_WarpMouseInWindow(platform_window, width * 0.5f, height * 0.5f);
+#endif
 		pthread_mutex_lock(&input_lock);
 		ui_pointer.x = width * 0.5f;
 		ui_pointer.y = height * 0.5f;
@@ -2686,7 +2717,11 @@ BOOL platform_ui_pointer_read(struct platform_ui_pointer *pointer)
 
 void platform_video_window_size(int *width, int *height)
 {
+#ifdef HALO_GUEST
+	platform_video_drawable_size(width, height);
+#else
 	SDL_GetWindowSize(platform_window, width, height);
+#endif
 }
 
 /* ---------- the system's on-screen keyboard */
@@ -2700,6 +2735,7 @@ it types arrives as keys. Elsewhere text input stays off, as before, so that
 no input method takes the keys the field reads: a Wayland touch screen's
 keyboard (text-input-v3) would type text events, which the field does not
 read. */
+#ifndef HALO_GUEST
 static SDL_AtomicInt screen_keyboard_wanted;
 /* (each field begun, which brings the keyboard up again: Steam does not say
 when its keyboard goes, by its own Enter or closed by hand, so SDL holds it
@@ -2765,6 +2801,18 @@ static void screen_keyboard_update(void)
 		SDL_DestroyProperties(properties);
 	}
 }
+#else
+/* The guest uses the game's own keyboard; it has no desktop keyboard UI. */
+void platform_screen_keyboard(BOOL show, BOOL password)
+{
+	(void)show;
+	(void)password;
+}
+
+static void screen_keyboard_update(void)
+{
+}
+#endif
 
 #else
 /* ---------- the menus' pointer (the touchscreen)

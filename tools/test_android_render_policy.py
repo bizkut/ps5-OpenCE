@@ -124,7 +124,7 @@ def test_policy_is_selected_before_game_resources():
     start = function((ROOT / "port/android/guest/runtime/guest_start.c").read_text(), "__guest_start")
     assert start.index("__guest_thread_initialize_main();") < start.index("android_render_policy_initialize();")
     assert start.index("android_render_policy_initialize();") < start.index("(*constructor)();") < start.index("result = main(")
-    imports = (ROOT / "port/android/host_imports.list").read_text().splitlines()
+    imports = (ROOT / "port/android/android_imports.list").read_text().splitlines()
     assert imports.count("host_android_chip_family") == 1
 
 

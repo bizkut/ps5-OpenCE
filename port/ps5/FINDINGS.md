@@ -300,3 +300,58 @@ USB keyboard's keys, whether the tone is heard.
 
 Consequence: plan D6 implements the `host_sdl_*` imports on these
 libraries; pacbrew's SDL3 is not used.
+
+## 2026-10-31: M1, the x32 guest under a Linux host (this machine, no console)
+
+`python3 configure.py --portable && ninja ps5_linux_host` builds
+`build/ps5/halo_guest.elf` (ELF32 x86-64 at `0x7c000000`: code
+`0x7c000000`+`0x1107843`, data `0x7d110000`+`0x1cb95f8`, the image ending at
+`0x7edca000`; no undefined symbol) and `build/ps5/linux/halo-x32`, which
+holds the image and loads it with 221 imports, none missing. Clang 18,
+Mesa 25.2.8 llvmpipe, Xvfb.
+
+- The main menu draws (OpenGL ES 3.2 through the host's GLES imports;
+  `build/ps5/linux/menu.png`). A hosted game on bloodgulch
+  (`HALO_NETWORK_TEST=host:bloodgulch`, `HALO_EXIT_AFTER=60`) logged a
+  player line each second and quit through `debug.exit_after` with status 0,
+  no fault.
+- `tools/net_compare.py`, the x32 build against the i386 build
+  (`build/linux/halo`, `--portable`), bloodgulch, 60 s compared each way:
+  both pass; positions apart mean 0.044 and 0.047, largest 0.098 and 0.101
+  world units; drift 0 of 1920 ticks both ways (`build/net_compare/m1-final`).
+  An earlier pair of runs had drift in the x32-hosted game (346 of 1608
+  ticks, largest 0.022); control runs of two identical builds had as much
+  (i386 with i386: 229 of 744 ticks, largest 0.0177; x32 with x32: 336 of
+  1203, largest 0.0166), so it is the netcode's, not the build's.
+- `tools/stagekit/tests` with `HALO_GAME=build/ps5/linux/halo-x32`: 20
+  passed (each machine's `game.log` names the x32 image), as with the i386
+  build.
+- x87 instructions in the image: 380, all in 17 musl functions
+  (`__fesetround`, `__floatscan`, `copysignl`, `fabsl`, `feclearexcept`,
+  `fegetenv`, `fesetenv`, `fetestexcept`, `fmodl`, `frexpl`, `hexfloat`,
+  `pop_arg`, `printf_core`, `scalbnl`, `strtod`, `strtof`, `vfscanf`): the
+  floating-point environment and `long double` conversion; none in the
+  game's or the port's code.
+- Boundary layouts under arm64_32 and x32 (clang record dumps,
+  `build/ps5/layout-*.txt`): equal for `halo_guest_header` (48/4),
+  `halo_guest_boot` (16/4), the kernel `kstat` (128/8), `stat` (88/8),
+  `timespec`, `iovec`, `pollfd` (8/4), `rlimit` (16/8), `dirent` (280/8),
+  `utsname` (390/1), `posix_file_information` (36/4), `SDL_AudioSpec`
+  (12/4), `SDL_Event` (128/8) and all 122 SDL records compared.
+- Pointer arguments: clang 18's x32 code zero-extends them at the call
+  (`addl $8, %edi` for a member's address, `addl %esi, %edi` for pointer
+  arithmetic) and a function forwarding its pointer argument compiles to a
+  bare `jmp`, relying on its caller; the import stubs therefore pass
+  registers through.
+- Android, which this machine cannot build (no NDK): every changed
+  Android-compiled file preprocesses to the same code with Android's
+  defines; Android's generator outputs and its `build.ninja` text (with a
+  stand-in NDK) are identical to before.
+- Baseline failures on this machine, at the original commit too
+  (`da8d4556`, clang 18): `tools/harness` `test_polygon_clip.py`'s two
+  `nan-crossing` negative controls and `test_elevator_prediction.py`'s
+  `riding-up`.
+
+Not done: `tools/harness` against x32 (it compiles engine functions with
+`-m32`, not the game), `tools/android_abi_check.py` on the x32 IR, and a
+`tools/guest_layout_check.py` in place of the hand comparison.

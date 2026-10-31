@@ -58,15 +58,28 @@ void host_debug_thread_exited(void)
 static void sample_handler(int signal_number, siginfo_t *information, void *context)
 {
 	const ucontext_t *ucontext = context;
+#if defined(__aarch64__)
 	const struct sigcontext *registers = (const struct sigcontext *)&ucontext->uc_mcontext;
+#endif
 	char line[512];
 	int length, depth;
+#if defined(__x86_64__) && defined(__linux__)
+	uint64_t fp = (uint64_t)ucontext->uc_mcontext.gregs[REG_RBP];
+#elif defined(__aarch64__)
 	uint64_t fp = registers->regs[29];
+#else
+#error Unsupported signal context
+#endif
 
 	(void)signal_number;
 	(void)information;
+#if defined(__x86_64__) && defined(__linux__)
+	length = snprintf(line, sizeof(line), "sample tid %d: pc %llx", gettid(),
+		(unsigned long long)ucontext->uc_mcontext.gregs[REG_RIP]);
+#elif defined(__aarch64__)
 	length = snprintf(line, sizeof(line), "sample tid %d: pc %llx lr %llx", gettid(),
 		(unsigned long long)registers->pc, (unsigned long long)registers->regs[30]);
+#endif
 	for (depth = 0; depth < 12 && fp && fp < 0x100000000ULL && !(fp & 7) && host_low_owns(fp, 16); depth++)
 	{
 		const uint64_t *frame = (const uint64_t *)fp;

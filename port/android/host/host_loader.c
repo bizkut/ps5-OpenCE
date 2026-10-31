@@ -14,6 +14,11 @@ host functions of the same names.
 #include <string.h>
 #include <sys/mman.h>
 
+#ifdef HALO_X32_GUEST
+#define Elf64_Ehdr Elf32_Ehdr
+#define Elf64_Phdr Elf32_Phdr
+#endif
+
 struct host_guest_image host_image;
 
 static void missing_import(void)
@@ -32,10 +37,17 @@ int host_load_image(const void *file, size_t size)
 	uint32_t count, index;
 	int missing = 0;
 
+#ifdef HALO_X32_GUEST
+	if (size < sizeof(*elf) || memcmp(elf->e_ident, ELFMAG, SELFMAG) || elf->e_ident[EI_CLASS] != ELFCLASS32 ||
+		elf->e_machine != EM_X86_64 || elf->e_type != ET_EXEC)
+	{
+		host_logf(HOST_LOG_ERROR, "the guest image is not an x32 executable");
+#else
 	if (size < sizeof(*elf) || memcmp(elf->e_ident, ELFMAG, SELFMAG) || elf->e_ident[EI_CLASS] != ELFCLASS64 ||
 		elf->e_machine != EM_AARCH64 || elf->e_type != ET_EXEC)
 	{
 		host_logf(HOST_LOG_ERROR, "the guest image is not an AArch64 executable");
+#endif
 		return -1;
 	}
 	segments = (const Elf64_Phdr *)((const char *)file + elf->e_phoff);
@@ -67,7 +79,11 @@ int host_load_image(const void *file, size_t size)
 			continue;
 		if (segment->p_offset + segment->p_filesz > size)
 			return -1;
+#ifdef HALO_X32_GUEST
+		memcpy((void *)(uintptr_t)segment->p_vaddr, (const char *)file + segment->p_offset, segment->p_filesz);
+#else
 		memcpy((void *)segment->p_vaddr, (const char *)file + segment->p_offset, segment->p_filesz);
+#endif
 	}
 
 	header = (const struct halo_guest_header *)low;

@@ -19,7 +19,11 @@ void *host_gl_resolve(const char *name)
 	void *function = NULL;
 
 	if (!library)
+#ifdef __ANDROID__
 		library = dlopen("libGLESv3.so", RTLD_NOW | RTLD_GLOBAL);
+#else
+		library = dlopen("libGLESv2.so.2", RTLD_NOW | RTLD_GLOBAL);
+#endif
 	if (library)
 		function = dlsym(library, name);
 	if (!function)

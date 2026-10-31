@@ -1348,8 +1348,13 @@ static void config_path(char *path, size_t size)
 	}
 	if (config_argument("--config", path, size) && *path)
 		return;
+#ifdef HALO_GUEST
+	base = getenv("HALO_DATA_ROOT");
+	snprintf(path, size, "%s/config.toml", base && *base ? base : ".");
+#else
 	base = SDL_GetBasePath();
 	snprintf(path, size, "%sconfig.toml", base ? base : "");
+#endif
 #endif
 }
 
@@ -1964,7 +1969,7 @@ static int config_skip_line(char *text, int line_number, const char *message)
 	return 1;
 }
 
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID) && !defined(HALO_WEB)
 /* a config.toml the game never reads, likely edited in its place: said in
 the log, with the one it reads (path) */
 static void config_report_unread(const char *path)
@@ -2299,7 +2304,9 @@ static void config_load(void)
 
 	config_path(path, sizeof(path));
 #if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#ifndef HALO_GUEST
 	config_report_unread(path);
+#endif
 	/* (a dedicated server's file has its settings too: asked for by the
 	command line or the environment, or by the file's server.enabled; a
 	probe is never one, whatever they say) */

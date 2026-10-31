@@ -165,7 +165,7 @@ static void files_gather(void)
 			file_add(embedded->path, (const unsigned char *)embedded->data, embedded->size, 0);
 		}
 	}
-#ifndef HALO_ANDROID
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID)
 	{
 		/* (the folder's own and its folders': SDL's * does not cross a /) */
 		static const char *const patterns[] = { "*.xml", "*/*.xml" };

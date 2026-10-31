@@ -20,7 +20,7 @@ The server browser's master servers (master_list.h).
 #include <string.h>
 #include <time.h>
 
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID) && !defined(HALO_WEB)
 #include <SDL3/SDL.h>
 #include "update.h"
 #endif
@@ -112,7 +112,7 @@ static char *masters_file(const char *setting, char *path, int size)
 	config_folder(folder, sizeof(folder));
 	snprintf(path, (size_t)size, "%s%s", folder, setting);
 	text = config_file_read(path, &length);
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(HALO_GUEST) && !defined(HALO_ANDROID) && !defined(HALO_WEB)
 	base = SDL_GetBasePath();
 	if (!text && base)
 	{
@@ -449,7 +449,7 @@ static int fetch(const char *url, struct fetched *fetched)
 	pthread_mutex_unlock(&one_at_a_time);
 	return fetched_one;
 }
-#elif defined(HALO_ANDROID)
+#elif defined(HALO_GUEST) || defined(HALO_ANDROID)
 /* the app's host (port/android/host/host_https.c) */
 int host_https_get(const char *url, int *status, char *headers, int headers_size, char *body, int body_capacity,
 	int *body_size, char *error, int error_size);

@@ -35,7 +35,9 @@ instead (host_watch_hash.c).
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
+#ifdef __ANDROID__
 #include <sys/system_properties.h>
+#endif
 #include <ucontext.h>
 #include <unistd.h>
 
@@ -108,6 +110,7 @@ static uint64_t find_gap(uint64_t size, uint64_t minimum)
 	return result;
 }
 
+#ifdef __ANDROID__
 /* ART reserves its spaces at addresses chosen at zygote start, and on some
 devices one of them covers the fixed Xbox memory window. ART's heap
 (dalvik.vm.heapsize) decides how much of the low 4 GB its spaces take: on
@@ -134,6 +137,7 @@ enum
 	RANGE_UNKNOWN
 };
 
+#endif
 /* why the fixed ranges could not be had: each reason also goes to the
 log, and the report (host_memory_report_low_mappings) starts with them, so
 memory_map.txt alone tells which case it was */
@@ -153,6 +157,7 @@ static void finding(int priority, const char *format, ...)
 		snprintf(findings + used, sizeof(findings) - used, "%s\n", line);
 }
 
+#ifdef __ANDROID__
 struct range_usage
 {
 	uint64_t pages_in_use;
@@ -425,6 +430,7 @@ static int reclaim_art_overlap(uint64_t address, uint64_t size)
 	fclose(maps);
 	return reclaimed;
 }
+#endif
 
 /* reclaim_art: the fixed ranges the guest was built for may take ART's
 idle large object space (reclaim_art_overlap); the pools, placed in free
@@ -443,6 +449,7 @@ static int reserve(uint64_t address, uint64_t size, int reclaim_art)
 		munmap(result, size);
 		errno = EEXIST;
 	}
+#ifdef __ANDROID__
 	if (reclaim_art && errno == EEXIST)
 	{
 		int error = errno;
@@ -464,6 +471,9 @@ static int reserve(uint64_t address, uint64_t size, int reclaim_art)
 			errno = EEXIST;
 		}
 	}
+#else
+	(void)reclaim_art;
+#endif
 	return -1;
 }
 
@@ -473,15 +483,19 @@ void host_memory_report_low_mappings(FILE *file)
 {
 	FILE *maps = fopen("/proc/self/maps", "r");
 	char line[512];
+#ifdef __ANDROID__
 	char model[PROP_VALUE_MAX] = "", heap[PROP_VALUE_MAX] = "", release[PROP_VALUE_MAX] = "";
 
 	__system_property_get("ro.product.model", model);
 	__system_property_get("dalvik.vm.heapsize", heap);
 	__system_property_get("ro.build.version.release", release);
+#endif
 	if (file)
 	{
+#ifdef __ANDROID__
 		fprintf(file, "device: %s, Android %s, Java heap %s\n", model[0] ? model : "unknown",
 			release[0] ? release : "unknown", heap[0] ? heap : "unknown");
+#endif
 		fprintf(file, "why:\n%s\nmappings below 4 GB:\n", findings[0] ? findings : "(no reason recorded)\n");
 	}
 	if (!maps)
@@ -575,6 +589,7 @@ int host_memory_fixed_unavailable(void)
 	return !fixed_reserved && fixed_error != 0;
 }
 
+#ifdef __ANDROID__
 /* For testing the reclaim on any device: with the system property
 debug.halo.art_overlap set (adb shell setprop debug.halo.art_overlap idle,
 or busy), a mapping named as ART's large object space is put over the fixed
@@ -628,10 +643,13 @@ static void simulate_art_overlap(void)
 		"(%ld kB of it swapped out)", value, SIMULATED_SPACE_BASE, SIMULATED_SPACE_BASE + SIMULATED_SPACE_SIZE,
 		mapping_swap_kb(SIMULATED_SPACE_BASE));
 }
+#endif
 
 void host_memory_reserve_early(void)
 {
+#ifdef __ANDROID__
 	simulate_art_overlap();
+#endif
 	if (reserve_fixed("at start-up (JNI_OnLoad)") == 0)
 		host_logf(HOST_LOG_INFO, "reserved the Xbox memory window and the image range at start-up");
 }
@@ -879,6 +897,13 @@ static struct sigaction previous_segv, previous_bus, previous_ill;
 
 static void report_crash(int signal_number, siginfo_t *information, void *context)
 {
+#if defined(__x86_64__) && defined(__linux__)
+	ucontext_t *ucontext = context;
+	uint64_t pc = (uint64_t)ucontext->uc_mcontext.gregs[REG_RIP];
+	uint64_t sp = (uint64_t)ucontext->uc_mcontext.gregs[REG_RSP];
+	host_logf(HOST_LOG_ERROR, "signal %d at address %p: pc %016llx sp %016llx",
+		signal_number, information->si_addr, (unsigned long long)pc, (unsigned long long)sp);
+#elif defined(__aarch64__)
 	ucontext_t *ucontext = context;
 	const struct sigcontext *registers = (const struct sigcontext *)&ucontext->uc_mcontext;
 	uint64_t pc = registers->pc, lr = registers->regs[30];
@@ -912,6 +937,9 @@ static void report_crash(int signal_number, siginfo_t *information, void *contex
 			fp = frame[0];
 		}
 	}
+#else
+#error Unsupported signal context
+#endif
 }
 
 static void chain(struct sigaction *previous, int signal_number, siginfo_t *information, void *context)
