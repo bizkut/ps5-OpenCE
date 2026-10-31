@@ -19,9 +19,10 @@ The game runs natively on **Windows, Linux, Android** and in the **web browser**
 ## PlayStation 5 (this fork)
 
 This fork, [bizkut/ps5-OpenCE](https://github.com/bizkut/ps5-OpenCE), adds a
-**native PS5 build** of OpenCE: a homebrew title (`PPSA99117`), not an
-emulator and not Wine. The game's own code runs on the console, drawn
-through OpenGL ES on Zink and the PS5's RADV Vulkan driver.
+**native PS5 build** of OpenCE: a homebrew title, **Halo: Combat Evolved
+(OpenCE)** (`PPSA99117`), not an emulator and not Wine. The game's own code
+runs on the console, drawn through OpenGL ES on Zink and the PS5's RADV
+Vulkan driver.
 
 - **4K at 120 fps with VRR**: the game draws at 3840x2160 and presents at
   119.88 Hz with variable refresh rate; in menus and multiplayer it keeps
