@@ -521,3 +521,13 @@ with an env file that sets only the data and save roots
 (`/data/opence-dev`, where the owner's maps, settings and profiles are).
 Console runs leave such a file behind; after a test, put back one without
 `HALO_EXIT_AFTER`.
+
+Split screen (the release build, eboot `230f448f…`, started from the home
+screen; `build/ps5/evidence/m4/splitscreen/opence.log`, a copy of
+`/data/opence-dev/opence.log`): the owner played split screen with two
+DualSenses on the console's two users and reports it working. The log
+shows both users' pads opened at start (486509363, 486509364), a game map
+loaded, and 15 ten-second windows: 9 at the display's pace (8.342 ms mean,
+longest 8.4-8.9 ms), the others holding first-draw stalls of 18 ms to
+0.92 s (longest 918.958 ms, as a map loaded); AudioOut 1875-1876 periods
+per window, no underrun and no error.

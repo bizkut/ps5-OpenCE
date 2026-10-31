@@ -36,9 +36,9 @@ Vulkan driver.
   DualSense's mute button cuts.
 - 48 kHz audio.
 
-This is an early preview. Checked on a PS5 so far: the menus, a campaign
-level loading, multiplayer games on the internet, the controller, sound and
-voice chat. Not checked yet: split screen with several controllers,
+This is an early preview. Checked on a PS5 so far: the menus, the first
+campaign level, multiplayer games on the internet, split screen with two
+controllers, the controller, sound and voice chat. Not checked yet:
 rumble, the keyboard and mouse in play, saved games and settings kept
 across restarts. The port's plan and what was measured on the console:
 [docs/ps5_port_plan.md](docs/ps5_port_plan.md),
