@@ -1,0 +1,2 @@
+# PS5-specific guest-to-host services (the Linux x32 host supplies a stub).
+host_ps5_hdr

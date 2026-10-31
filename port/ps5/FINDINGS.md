@@ -561,3 +561,38 @@ Run artifacts, including the signed eboot and matching ELF snapshots, are in
   then `exiting after debug.exit_after` and `LoadExec exit (0)`. The env
   file was removed afterwards; the final payload check reported `ok idle`.
 
+## 2026-10-31: HDR10 on .41 (run1-run4)
+
+The pinned Mesa VideoOut WSI includes HDR10 support; the EGL/Zink window
+bridge requires an additional port patch. The title declares HDR10 while
+keeping SDR as its default. When both HDR settings are on at startup the
+host probes VideoOut's output status, requests RGB10_A2 and BT.2020 PQ if
+the reported dynamic range is 2, and otherwise uses SDR. The renderer
+converts linear Rec.709 to Rec.2020 and ST2084 at the selected paper white;
+the defaults are 200 nits paper white and 1000 nits peak, not system
+measurements. The calibration fills use the same transfer function.
+
+`build/ps5/evidence/hdr/run1` to `run4` use eboot SHA-256
+`049c1a98acd055035d298080e8bd122d93ac078a010ddaf2ceaba95f2fa47d02`.
+For runs 1 to 3 the owner reported the system HDR setting was on; for run4,
+off. All four reached their 45-second exit and `LoadExec exit (0)`.
+
+- Run1, game HDR off: output status `dynamic_range=2`, EGL RGBA8/default
+  SDR. The title still declared HDR. The owner reported the picture looked
+  normal.
+- Run2, game HDR on: output status `dynamic_range=2`, EGL RGB10_A2/BT.2020
+  PQ, WSI `HDR10 PQ swapchain A2R10G10B10_UNORM_PACK32`, kopper colorspace
+  `1000104008`. The renderer logged 200-nit paper white, 1000-nit peak and
+  calculated neutral paper-white PQ code `0.579134`; this is a calculated
+  value, not a pixel readback. The owner reported "HDR works".
+- Run3, both game HDR settings on: output status `dynamic_range=2`,
+  HDR10 PQ swapchain and HDMI `YCC2100_PQ`. The owner confirmed system HDR
+  was still on and reported the TV showed HDR with a normal picture; this
+  was not an SDR fallback test.
+- Run4, both game HDR settings on and system HDR off: output status
+  `dynamic_range=1`, EGL RGBA8/default SDR, HDMI YUV422 limited Rec.709.
+  The HDR10 swapchain was not selected. The owner reported a normal
+  picture and the TV's HDR indicator off.
+
+The owner's eye on the TV is the check of the picture: no pixel readback
+of the PQ output has been made.

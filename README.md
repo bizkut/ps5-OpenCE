@@ -34,6 +34,9 @@ Vulkan driver.
   joining and hosting games), with **voice chat**: hold the touchpad to
   talk (Settings > Audio > VOICE CHAT: PUSH TO TALK), or OPEN MIC, which the
   DualSense's mute button cuts.
+- **HDR10**: with HDR and HDR DISPLAY on in Video Setup's GRAPHICS screen
+  (off by default; taken up when the game starts) and the PS5's HDR on, the
+  game sends HDR10 (BT.2020, PQ); with the PS5's HDR off it stays SDR.
 - 48 kHz audio.
 
 This is an early preview. Checked on a PS5 so far: the menus, the first

@@ -2216,6 +2216,18 @@ static struct
 	int paper_white, peak_brightness;
 } hdr_calibration;
 
+#ifdef HALO_X32_GUEST
+/* Calibration fills are neutral scRGB values; encode their absolute light
+for the HDR10 window, whose 1.0 is 10000 nits. */
+static float hdr_pq_grey(float scrgb)
+{
+	const float m1 = 2610.0f / 16384.0f, m2 = 2523.0f / 32.0f;
+	const float c1 = 3424.0f / 4096.0f, c2 = 2413.0f / 128.0f, c3 = 2392.0f / 128.0f;
+	float value = powf(scrgb * (80.0f / 10000.0f), m1);
+	return powf((c1 + c2 * value) / (1.0f + c3 * value), m2);
+}
+#endif
+
 /* a setting in nits, within lowest and highest; 0 (Windows' own) stays */
 static int hdr_nits(int value, int lowest, int highest)
 {
@@ -2273,9 +2285,17 @@ static void hdr_calibration_square(const struct render_target_entry *back_buffer
 
 	hdr_calibration_place(back_buffer, window, left, top, left + SIDE, top + SIDE, corners);
 	color[0] = color[1] = color[2] = square_color;
+#ifdef HALO_X32_GUEST
+	if (hdr.float_window)
+		color[0] = color[1] = color[2] = hdr_pq_grey(square_color);
+#endif
 	ring[0] = ring[1] = ring[2] = ring[3] = 0.0f;
 	xgpu_post_fill(corners, color, ring);
 	color[0] = color[1] = color[2] = ring_color;
+#ifdef HALO_X32_GUEST
+	if (hdr.float_window)
+		color[0] = color[1] = color[2] = hdr_pq_grey(ring_color);
+#endif
 	ring[0] = (float)(corners[0] + corners[2]) / 2.0f;
 	ring[1] = (float)(corners[1] + corners[3]) / 2.0f;
 	ring[2] = OUTER * down;
@@ -2313,6 +2333,10 @@ static void hdr_calibration_draw(const struct render_target_entry *back_buffer, 
 
 			/* (the menus' values are gamma encoded, as the presentation's) */
 			color[0] = color[1] = color[2] = powf((float)(grey + 1) / (float)GREYS, 2.2f) * paper;
+#ifdef HALO_X32_GUEST
+			if (hdr.float_window)
+				color[0] = color[1] = color[2] = hdr_pq_grey(color[0]);
+#endif
 			hdr_calibration_place(back_buffer, window, 100.0f + 26.0f * (float)grey, 166.0f,
 				100.0f + 26.0f * (float)(grey + 1), 306.0f, corners);
 			xgpu_post_fill(corners, color, ring);
@@ -2338,6 +2362,12 @@ static void hdr_read(void)
 	{
 #ifdef HALO_GLES
 		glGetInternalformativ(GL_RENDERBUFFER, GL_RGBA16F, GL_SAMPLES, 1, &hdr.maximum_samples);
+#ifdef HALO_X32_GUEST
+		{
+			float white, headroom;
+			hdr.float_window = platform_video_hdr(&white, &headroom);
+		}
+#endif
 #else
 		GLint component_type = GL_NONE;
 
@@ -2924,8 +2954,16 @@ long halo_screen_commit(void)
 		if (paper != hdr.sdr_white * 80.0f || peak / paper != hdr.tone_mapping.peak)
 		{
 			if (on && !calibrating)
+#ifdef HALO_X32_GUEST
+			{
+				platform_log("HDR: paper white %.0f nits%s, peak %.0f nits%s", paper,
+					paper_white ? "" : " (default)", peak, peak_brightness ? "" : " (default)");
+				platform_log("HDR: calculated neutral paper-white PQ code %.6f", hdr_pq_grey(paper / 80.0f));
+			}
+#else
 				platform_log("HDR: the display's paper white %.0f nits%s, peak %.0f nits%s", paper,
 					paper_white ? "" : " (Windows')", peak, peak_brightness ? "" : " (Windows')");
+#endif
 		}
 		hdr.sdr_white = paper / 80.0f;
 		hdr.tone_mapping.peak = peak / paper;
@@ -7814,7 +7852,11 @@ void WINAPI D3DDevice_Present(CONST RECT *source_rectangle, CONST RECT *destinat
 		converts half floats) */
 		if (!((back_buffer->target.format == GL_RGBA16F || hdr.float_window) &&
 			xgpu_post_present(back_buffer->target.texture, x, y, width, height,
+#ifdef HALO_X32_GUEST
+				hdr.float_window ? -hdr.sdr_white : 0.0f)))
+#else
 				hdr.float_window ? hdr.sdr_white : 0.0f)))
+#endif
 		{
 			glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer_get(back_buffer->target.texture, 0));
 			/* row 0 of the render target is the top of the picture */

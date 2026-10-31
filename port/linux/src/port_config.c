@@ -312,19 +312,32 @@ static const struct config_setting config_settings[] =
 		"brightest parts rolled off at their own colour), \"aces\" (filmic,\n"
 		"more contrast) or \"reinhard\" (softer, and darker throughout)." },
 	{ "display.hdr_output", _config_boolean, "false", "HALO_HDR_OUTPUT", _environment_value, _platform_desktop,
+#ifdef HALO_X32_GUEST
+		"With display.hdr, request HDR10 PQ when VideoOut reports HDR;\n"
+		"otherwise the window is SDR. Taken up when the game starts." },
+#else
 		"With display.hdr, ask for a floating-point window (scRGB), so that an\n"
 		"HDR display shows what is past white brighter than the desktop's\n"
 		"white rather than tone mapped down to it; the operating system's HDR\n"
 		"must be on. Taken up when the game starts." },
+#endif
 	{ "display.hdr_paper_white", _config_integer, "0", "HALO_HDR_PAPER_WHITE", _environment_value, _platform_desktop,
 		"With display.hdr_output on an HDR display, how bright white is, in\n"
 		"nits (80 to 1000): the HUD, the menus, and the 3D view's white. 0:\n"
+#ifdef HALO_X32_GUEST
+		"200 nits on PS5." },
+#else
 		"Windows' SDR content brightness." },
+#endif
 	{ "display.hdr_peak_brightness", _config_integer, "0", "HALO_HDR_PEAK_BRIGHTNESS", _environment_value,
 		_platform_desktop,
 		"With display.hdr_output on an HDR display, the brightest the display\n"
 		"shows, in nits (250 to 10000), which the brightest light is fitted to.\n"
+#ifdef HALO_X32_GUEST
+		"0: 1000 nits on PS5." },
+#else
 		"0: what Windows reports (set by its HDR Calibration app)." },
+#endif
 
 	{ "audio.enabled", _config_boolean, "true", "HALO_NO_AUDIO", _environment_set_is_false, _platform_all,
 		"Play sound." },

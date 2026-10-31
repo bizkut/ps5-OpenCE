@@ -99,7 +99,7 @@ Forever's Wine runtime already does.
 
 - A Vulkan or AGC renderer. The renderer stays `d3d8_gl.c`.
 - Shipping game data. The user copies their own `maps/` (as for every port).
-- HDR, frame generation (unless M6 calls for it, D12), PS5 trophies,
+- Frame generation (unless M6 calls for it, D12), PS5 trophies,
   activities, the PS5 on-screen keyboard (the game's own on-screen keyboard
   works with the pad; a USB keyboard types).
 - Changing `../forever` or the Forever Launcher title.
@@ -294,6 +294,18 @@ with OpenCE's patches (`port/ps5/patches/mesa/`):
 
 S5a and S5b (`port/ps5/FINDINGS.md`) run pbuffers and windows through
 these on the console.
+**HDR output (2026-10-31).** The title declares HDR10,
+but defaults to SDR. With both `display.hdr` and `display.hdr_output` set
+at startup, and VideoOut reporting HDR, the host requests a 10-bit BT.2020
+PQ EGL window. The presentation shader converts linear Rec.709 at paper
+white into Rec.2020/ST2084; the existing tone mapper uses the configured
+peak. Paper white and peak default to 200 and 1000 nits on PS5. Output
+selection changes on restart; an unavailable HDR window falls back to SDR.
+The pinned VideoOut WSI has HDR10 support; patch `0006` carries PQ through
+EGL and kopper. Run2 (`port/ps5/FINDINGS.md`) logged the HDR10 swapchain
+and the owner reported that HDR works; run4 used SDR when the system HDR
+setting was off, and the owner saw a normal picture without HDR on the
+TV. No pixel readback of the PQ output has been made.
 
 The renderer runs its OpenGL ES 3.x path (`HALO_GLES`), which the Android
 port already runs on Zink (Turnip, `port/android/README.md:453-459`) and
@@ -817,7 +829,7 @@ GPL-3.0-or-later) are listed in the title folder.
 
 ## Not planned
 
-Trophies, the PS5 Activity cards, PS5 cloud saves, HDR, a native AGC
+Trophies, the PS5 Activity cards, PS5 cloud saves, a native AGC
 renderer, a PKG release (the title folder is installed as other homebrew
 titles are), and Bink movies (the game skips them on every port).
 

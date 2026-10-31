@@ -17,13 +17,45 @@ int ps5_input_text(int type);
 void ps5_input_window_created(unsigned int window);
 const char *ps5_scancode_name(int scancode);
 int ps5_scancode_from_name(const char *name);
+int sceVideoOutOpen(int32_t user, int32_t bus, int32_t index, const void *parameter);
+int sceVideoOutClose(int32_t handle);
+int sceVideoOutGetOutputStatus(int32_t handle, void *status);
+#ifndef EGL_GL_COLORSPACE_BT2020_PQ_EXT
+#define EGL_GL_COLORSPACE_BT2020_PQ_EXT 0x3340
+#endif
+static int window_created;
+static int hdr_window;
+
+int host_ps5_hdr(int request)
+{
+	union { uint64_t alignment; unsigned char bytes[192]; } status = {0};
+	uint32_t dynamic_range = 0;
+	int handle, result;
+
+	if (request < 0 || window_created)
+		return hdr_window;
+	hdr_window = 0;
+	handle = sceVideoOutOpen(0xff, 0, 0, NULL);
+	if (handle < 0)
+	{
+		host_logf(HOST_LOG_INFO, "opence: HDR VideoOut open failed %#x", (unsigned int)handle);
+		return 0;
+	}
+	result = sceVideoOutGetOutputStatus(handle, status.bytes);
+	memcpy(&dynamic_range, status.bytes + 4, sizeof(dynamic_range));
+	sceVideoOutClose(handle);
+	hdr_window = request && result == 0 && dynamic_range == 2;
+	host_logf(HOST_LOG_INFO, "opence: HDR requested %d output status %#x dynamic_range %u, HDR10 %s",
+		request, (unsigned int)result, dynamic_range, hdr_window ? "on" : "off");
+	return hdr_window;
+}
 static EGLDisplay display = EGL_NO_DISPLAY;
 static EGLSurface surface = EGL_NO_SURFACE;
 static EGLContext egl_context = EGL_NO_CONTEXT;
 static EGLConfig config;
 static uint32_t window_size[2] = {3840, 2160};
 static int context_major = 3, context_minor = 2;
-static int window_created, splash_hidden;
+static int splash_hidden;
 static uint64_t window_start, first_swap, previous_swap, interval_sum, interval_max;
 static unsigned int interval_count, summaries;
 static char error_text[160];
@@ -86,8 +118,16 @@ unsigned int host_sdl_create_window(const char *title, int width, int height, lo
 		EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
 		EGL_DEPTH_SIZE, 0, EGL_STENCIL_SIZE, 0, EGL_NONE
 	};
+	static const EGLint hdr_attributes[] = {
+		EGL_SURFACE_TYPE, EGL_WINDOW_BIT, EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+		EGL_RED_SIZE, 10, EGL_GREEN_SIZE, 10, EGL_BLUE_SIZE, 10, EGL_ALPHA_SIZE, 2,
+		EGL_DEPTH_SIZE, 0, EGL_STENCIL_SIZE, 0, EGL_NONE
+	};
+	static const EGLAttrib pq_surface[] = {
+		EGL_GL_COLORSPACE_KHR, EGL_GL_COLORSPACE_BT2020_PQ_EXT, EGL_NONE
+	};
 	const char *resolution = getenv("HALO_PS5_RESOLUTION");
-	EGLint major, minor, count;
+	EGLint major, minor, count, red, green, blue, alpha;
 	uint64_t start = nanoseconds();
 	window_start = start;
 	(void)title;
@@ -122,9 +162,46 @@ unsigned int host_sdl_create_window(const char *title, int width, int height, lo
 		return egl_error("eglInitialize");
 	host_logf(HOST_LOG_INFO, "opence: EGL %d.%d vendor %s version %s", major, minor,
 		eglQueryString(display, EGL_VENDOR), eglQueryString(display, EGL_VERSION));
-	if (!eglBindAPI(EGL_OPENGL_ES_API) || !eglChooseConfig(display, attributes, &config, 1, &count) || !count)
-		return egl_error("eglChooseConfig");
-	surface = eglCreatePlatformWindowSurface(display, config, window_size, NULL);
+	if (!eglBindAPI(EGL_OPENGL_ES_API))
+		return egl_error("eglBindAPI");
+	if (hdr_window)
+	{
+		EGLConfig *configs = NULL;
+		EGLint i, capacity = 0;
+		if (eglChooseConfig(display, hdr_attributes, NULL, 0, &capacity) && capacity > 0)
+			configs = malloc((size_t)capacity * sizeof(*configs));
+		if (configs && eglChooseConfig(display, hdr_attributes, configs, capacity, &count))
+		{
+			for (i = 0; i < count; i++)
+			{
+				if (eglGetConfigAttrib(display, configs[i], EGL_RED_SIZE, &red) &&
+					eglGetConfigAttrib(display, configs[i], EGL_GREEN_SIZE, &green) &&
+					eglGetConfigAttrib(display, configs[i], EGL_BLUE_SIZE, &blue) &&
+					eglGetConfigAttrib(display, configs[i], EGL_ALPHA_SIZE, &alpha) &&
+					red == 10 && green == 10 && blue == 10 && alpha == 2)
+				{
+					config = configs[i];
+					surface = eglCreatePlatformWindowSurface(display, config, window_size, pq_surface);
+					if (surface != EGL_NO_SURFACE)
+						break;
+				}
+			}
+		}
+		free(configs);
+		if (surface == EGL_NO_SURFACE)
+		{
+			host_logf(HOST_LOG_INFO, "opence: HDR10 EGL surface unavailable (%#x), using SDR", eglGetError());
+			hdr_window = 0;
+		}
+	}
+	if (!hdr_window)
+	{
+		if (!eglChooseConfig(display, attributes, &config, 1, &count) || !count)
+			return egl_error("eglChooseConfig");
+		surface = eglCreatePlatformWindowSurface(display, config, window_size, NULL);
+	}
+	host_logf(HOST_LOG_INFO, "opence: EGL window config %s colorspace %s",
+		hdr_window ? "RGB10_A2" : "RGBA8", hdr_window ? "BT2020 PQ" : "default SDR");
 	if (surface == EGL_NO_SURFACE)
 		return egl_error("eglCreatePlatformWindowSurface");
 	host_logf(HOST_LOG_INFO, "opence: window %ux%u created in %.1f ms", window_size[0], window_size[1],

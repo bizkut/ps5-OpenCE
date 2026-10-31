@@ -7,6 +7,13 @@
 #include <sys/syscall.h>
 
 #include "host_guest_syscall.h"
+/* The Linux x32 host does not create a PS5 HDR10 window. */
+int host_ps5_hdr(int request)
+{
+	(void)request;
+	return 0;
+}
+
 
 int host_linux_stat_syscall(long number, long long a, long long b, long long c, long long d, long long *result)
 {

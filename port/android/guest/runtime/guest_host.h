@@ -67,6 +67,9 @@ unsigned int host_sdl_gl_create_context(unsigned int window);
 int host_sdl_gl_make_current(unsigned int window, unsigned int context);
 int host_sdl_gl_set_swap_interval(int interval);
 int host_sdl_gl_swap_window(unsigned int window);
+/* x32 hosts: request HDR before window creation, or query the chosen output
+with request < 0. Returns nonzero only for an HDR10 window. */
+int host_ps5_hdr(int request);
 int host_sdl_poll_event(void *event);
 /* SDL's text input for the window (Android's keyboard while a name is typed:
 sdl_platform.c), started as the SDL_TextInputType given, one line and with no

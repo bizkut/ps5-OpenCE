@@ -340,7 +340,8 @@ def generate_guest_build(n: Writer, sln: Any, config: Dict[str, Any], *, name: s
         description=f"{label} IMPORTS",
     )
     n.build(outputs=[imports_s, host_table_c], rule=f"{name}_imports",
-            inputs=[host_imports_list, posix_imports, gl_imports],
+            inputs=[host_imports_list, posix_imports, gl_imports,
+                    *([Path("port/ps5/host_imports.list")] if x32 else [])],
             implicit=[Path("tools/android_imports.py"), *([] if x32 else [PORT_DIR / "android_imports.list"])])
 
     generated_headers = [*xdk_headers(), alltypes, syscall_h, version_h, gl_stamp,

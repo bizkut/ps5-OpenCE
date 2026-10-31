@@ -381,12 +381,27 @@ static const char present_source[] =
 	"uniform float scale;\n"
 	"out vec4 result;\n"
 	"\n"
+#ifdef HALO_X32_GUEST
+	"vec3 hdr10(vec3 color)\n"
+	"{\n"
+	"\tvec3 wide = vec3(dot(color, vec3(0.627404, 0.329283, 0.043313)),\n"
+	"\t\tdot(color, vec3(0.069097, 0.919540, 0.011362)),\n"
+	"\t\tdot(color, vec3(0.016391, 0.088013, 0.895595)));\n"
+	"\tvec3 p = pow(clamp(wide * (-scale * 80.0 / 10000.0), 0.0, 1.0), vec3(2610.0 / 16384.0));\n"
+	"\treturn pow((3424.0 / 4096.0 + (2413.0 / 128.0) * p) / (1.0 + (2392.0 / 128.0) * p), vec3(2523.0 / 32.0));\n"
+	"}\n"
+#endif
 	"void main()\n"
 	"{\n"
 	"\tvec2 position = (gl_FragCoord.xy - rectangle.xy) * rectangle.zw;\n"
 	"\tvec3 color = max(textureLod(color_texture, vec2(position.x, 1.0 - position.y), 0.0).rgb, vec3(0.0));\n"
 	"\n"
+#ifdef HALO_X32_GUEST
+	"\tresult = vec4(scale < 0.0 ? hdr10(pow(color, vec3(2.2))) :\n"
+	"\t\t(scale > 0.0 ? pow(color, vec3(2.2)) * scale : min(color, vec3(1.0))), 1.0);\n"
+#else
 	"\tresult = vec4(scale > 0.0 ? pow(color, vec3(2.2)) * scale : min(color, vec3(1.0)), 1.0);\n"
+#endif
 	"}\n";
 
 /* the viewport in one colour, or only a ring of it */

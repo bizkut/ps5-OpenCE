@@ -21,6 +21,9 @@ and the debug keyboard that the game's console reads.
 #include "xiso.h"
 #include "touch_input.h"
 #include "../game/text_filter.h"
+#ifdef HALO_X32_GUEST
+#include "../../android/guest/runtime/guest_host.h"
+#endif
 
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -1069,9 +1072,15 @@ BOOL platform_video_hdr(float *sdr_white, float *headroom)
 #elif defined(HALO_GUEST) && !defined(HALO_ANDROID)
 BOOL platform_video_hdr(float *sdr_white, float *headroom)
 {
+#ifdef HALO_X32_GUEST
+	*sdr_white = 200.0f / 80.0f;
+	*headroom = 1000.0f / 200.0f;
+	return host_ps5_hdr(-1) != 0;
+#else
 	*sdr_white = 1.0f;
 	*headroom = 1.0f;
 	return FALSE;
+#endif
 }
 #endif
 
@@ -1252,6 +1261,10 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 #endif
 	if (platform_float_window)
 		platform_float_window_attributes(TRUE);
+#endif
+#ifdef HALO_X32_GUEST
+	/* The display plane's format cannot change until the next start. */
+	host_ps5_hdr(config_boolean("display.hdr") && config_boolean("display.hdr_output"));
 #endif
 
 #ifdef HALO_GLES
