@@ -13,8 +13,25 @@ already have host types by then. Only strings need copying back.
 #include <dlfcn.h>
 #include <string.h>
 
+#ifdef __PROSPERO__
+/* Mesa is statically linked into the title; there is no libGLES to dlopen. */
+#define glGetString ((PFNGLGETSTRINGPROC)eglGetProcAddress("glGetString"))
+#define glGetStringi ((PFNGLGETSTRINGIPROC)eglGetProcAddress("glGetStringi"))
+#define glGetIntegerv ((PFNGLGETINTEGERVPROC)eglGetProcAddress("glGetIntegerv"))
+#define glBindBuffer ((PFNGLBINDBUFFERPROC)eglGetProcAddress("glBindBuffer"))
+#define glMapBufferRange ((PFNGLMAPBUFFERRANGEPROC)eglGetProcAddress("glMapBufferRange"))
+#define glUnmapBuffer ((PFNGLUNMAPBUFFERPROC)eglGetProcAddress("glUnmapBuffer"))
+#define glDeleteSync ((PFNGLDELETESYNCPROC)eglGetProcAddress("glDeleteSync"))
+#define glFenceSync ((PFNGLFENCESYNCPROC)eglGetProcAddress("glFenceSync"))
+#define glClientWaitSync ((PFNGLCLIENTWAITSYNCPROC)eglGetProcAddress("glClientWaitSync"))
+#define glBufferSubData ((PFNGLBUFFERSUBDATAPROC)eglGetProcAddress("glBufferSubData"))
+#endif
+
 void *host_gl_resolve(const char *name)
 {
+#ifdef __PROSPERO__
+	return (void *)eglGetProcAddress(name);
+#else
 	static void *library;
 	void *function = NULL;
 
@@ -29,6 +46,7 @@ void *host_gl_resolve(const char *name)
 	if (!function)
 		function = (void *)eglGetProcAddress(name);
 	return function;
+#endif
 }
 
 void host_gl_get_string(uint32_t name, int index, char *buffer, uint32_t size)

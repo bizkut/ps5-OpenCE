@@ -1,6 +1,6 @@
 # OpenCE on the PlayStation 5: port plan
 
-Status (2026-10-31): M0's gate passed, M1 and M2 done, M3 next. Written
+Status (2026-10-31): M0's gate passed, M1-M3 done, M4 next. Written
 against OpenCE `da8d4556`. On the console (.41, `port/ps5/FINDINGS.md`):
 S1-S4 pass (run2), S5a (run6: OpenGL ES 3.2 on Zink on RADV in a plain
 title) and S5b (run11-13: Zink presenting itself on VideoOut at 119.88 Hz,
@@ -13,8 +13,9 @@ the i386 build in `net_compare.py`. M2 (`build/ps5/evidence/m2`): the title
 reserves the guest's memory, loads the image linked into its eboot and runs
 the game windowless on the console: a hosted bloodgulch game for 60 s and
 three timed start-ups, each leaving through `LoadExec("exit")` (run19-22).
-Every other claim about the PS5 below cites the repository that measured
-it.
+M3 (`build/ps5/evidence/m3`): the main menu draws through Zink on RADV at
+3840x2160 and keeps 119.88 Hz after the first seconds (run5). Every other
+claim about the PS5 below cites the repository that measured it.
 
 ## Summary
 
@@ -613,14 +614,33 @@ saved with `debug.screenshot_directory`/`debug.screenshot_every` matches the
 Linux build's frame of the same menu at the same resolution; the per-pixel
 difference is recorded in `port/ps5/FINDINGS.md`.
 
+Status (2026-10-31, `build/ps5/evidence/m3`, `port/ps5/FINDINGS.md`):
+done. The title links Mesa's EGL, Zink and RADV; `sdl_ps5.c` makes the
+game's window a kopper surface of 3840x2160 (one per run, as S5b found) and
+an OpenGL ES 3.2 context, `host_gl.c` takes the GL functions from
+`eglGetProcAddress`. The main menu draws at 3840x2160 and 119.88 Hz; after
+the first 10 s every frame keeps the display's pace (mean 8.342 ms, longest
+8.46 ms; the first seconds hold one frame of about 0.8 s, cause not yet
+measured). The owner saw it run smoothly on the TV. Against the Linux
+host's capture of the same menu, the logo drawn over the animated
+background differs by 0.45 on average; the whole frame differs because the
+background is caught at another moment. Left for later: the shader cache
+(M6), the memory watch on faults rather than hashes (D4), a size setting
+other than 3840x2160 (D11, M6).
+
 ### M4. Input and audio
 
 DualSense through the native backend (D6) to `xinput_sdl.c` (a pad for each
 signed-in user, four for split screen), USB keyboard and mouse, rumble; audio
-at 48 kHz stereo through `dsound_sdl.c`.
+at 48 kHz stereo through `dsound_sdl.c`. The backend reports the DualSense as
+`SDL_GAMEPAD_TYPE_PS5` (`host_sdl_gamepad_type`), so the HUD's prompts take
+the PlayStation buttons OpenCE already has (`port/assets/controller_buttons`:
+Cross, Circle, Square, Triangle in four styles, L1/R1/L2/R2, the sticks;
+`display.hud_button_style_ps`, `port/linux/src/controller_buttons.c`).
 
 Done when: with the DualSense, a person moves, fires, drives and navigates
-every settings screen, and four pads play split screen; ten minutes of the
+every settings screen, and four pads play split screen; the HUD's prompts
+show PlayStation buttons without a setting changed; ten minutes of the
 first level pass with no AudioOut underrun in the klog; rumble is felt.
 
 ### M5. Data, settings, saved games, Custom Edition, mods

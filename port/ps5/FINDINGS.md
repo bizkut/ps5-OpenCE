@@ -420,3 +420,39 @@ Android-compiled file changed preprocesses as before with Android's defines
 (with the headers M2 split out inlined), except `xbox_memory.c`, whose new
 code runs only when `HALO_WINDOW_FLOOR` is set, which only the PS5 host
 does.
+
+## 2026-10-31: M3 first menu frames on .41 (run1-run5)
+
+`build/ps5/evidence/m3/runN` (each with its eboot and ELF). Runs 1-2
+repeat M2's windowless acceptance after the PS5 host's style pass (eboot
+`e7ee23b8…`): the five-second start-up and the 60-second hosted bloodgulch
+game both left through `debug.exit_after` and `LoadExec(0)`.
+
+The title now links Mesa's EGL, Zink and RADV (eboot 56 MB). From run3 the
+game draws its main menu at 3840x2160 through EGL's surfaceless platform,
+Zink and kopper on VideoOut, mode 3840x2160 at 119.880 Hz with the VRR
+metadata: `GL OpenGL ES 3.2 Mesa 26.2.0 renderer zink Vulkan 1.4(PlayStation
+5 GPU (RADV NAVI21) (MESA_RADV))`. Every run left through `debug.exit_after`
+and `LoadExec(0)`, no fatal signal.
+
+- Start-up (run5): the window in 7.8 ms, the context current 2077.2 ms
+  after it (Zink and RADV starting), the first swap at 2102.7 ms.
+- Frame intervals at the swap, 10-second windows (run5, no screenshots):
+  the first 1104 frames, mean 9.064 ms, longest 783.151 ms; then 1199
+  frames each window, mean 8.342 ms, longest 8.456 and 8.428 ms: the
+  display's 119.88 Hz with nothing late. The cause of the first window's
+  long frame is not measured (shader compiles are likely: the shader cache
+  is off). The owner, watching run4 on the TV: "it runs smooth".
+- Run4, no screenshots: its first window's longest frame 775 ms, then
+  three windows of mean 8.342 ms, longest 8.513, 8.496 and 8.462 ms. Run3
+  saved a 4K BMP screenshot periodically; its windows had frames of 4.3
+  and 6.4 s, from the captures.
+- The picture, run3's capture against the Linux host's at the same size and
+  settings (llvmpipe; `ps5.png`, `linux.png`): the same menu. Over the
+  whole frame the channels differ by 7.24, 8.27 and 8.98 on average and
+  36.61 % of pixels by more than 8, because the background is the ring
+  scene, animated by time, caught at another moment. On the parts drawn
+  over it: the Halo logo's 86,393 bright pixels differ by 0.45-0.49 on
+  average, 0.27 % by more than 8; the menu items' 38,769 bright pixels by
+  3.2-3.4, 19.6 % by more than 8 (their glow is blended over the moving
+  background, and the highlighted item pulses).

@@ -47,7 +47,7 @@ def generate_ps5_title(n, image, host_table_c):
     n.rule("ps5_title_cc",
            command="$python tools/ps5_title.py compile $in $out $cflags -MMD -MF $out.d",
            description="PS5 TITLE CC $out", depfile="$out.d", deps="gcc")
-    n.rule("ps5_title_link", command="$python tools/ps5_title.py link build/ps5/title $in",
+    n.rule("ps5_title_link", command="$python tools/ps5_title.py link --mesa build/ps5/title $in",
            description="PS5 TITLE LINK")
     n.rule("ps5_title_stage",
            command="$python tools/ps5_title.py stage build/ps5/title build/ps5/title/PPSA99117 port/ps5/sce_sys/param.json",
@@ -59,10 +59,10 @@ def generate_ps5_title(n, image, host_table_c):
     flags = (f"-std=gnu11 -O2 -g -ffp-contract=off -fno-omit-frame-pointer -ffunction-sections "
              f"-fdata-sections -D_GNU_SOURCE -DHALO_X32_GUEST=1 "
              f"-I{ANDROID}/include -I{ANDROID}/host -I{ANDROID}/guest/runtime "
-             f"-Iport/ps5/host -I{LINUX} -I{TOML} -idirafter port/linux/include")
+             f"-Iport/ps5/host -I{LINUX} -I{TOML} -I{BUILD}/deps/mesa/include -idirafter port/linux/include")
     sources = sorted(Path("port/ps5/host").glob("*.c"))
     sources += [ANDROID / "host" / (name + ".c") for name in
-                ("host_loader", "host_thread", "host_watch_hash", "host_https")]
+                ("host_loader", "host_thread", "host_watch_hash", "host_https", "host_gl")]
     sources += [host_table_c, LINUX / "posix_files.c", LINUX / "posix_net.c", TOML / "tomlc17.c"]
     mini = [LINUX / "posix_upnp.c", *miniupnpc_sources()]
     tls = [LINUX / "posix_dtls.c", LINUX / "posix_update.c", *sorted((MBED / "library").glob("*.c"))]
@@ -88,7 +88,9 @@ def generate_ps5_title(n, image, host_table_c):
             implicit=[image, "tools/ps5_title.py"], variables={"cflags": f"-Wa,-I{image.parent}"})
     objects.append(image_object)
     module = build / "eboot.elf"
-    n.build(module, "ps5_title_link", objects, implicit=["tools/ps5_title.py", "tools/ps5_deps.py"])
+    mesa_lib = BUILD / "deps/mesa/lib"
+    archives = [mesa_lib / name for name in ("libvulkan_radeon.a", "libgallium.a", "libEGL.a")]
+    n.build(module, "ps5_title_link", objects, implicit=["tools/ps5_title.py", "tools/ps5_deps.py", *archives])
     outputs = [folder / "eboot.bin", folder / "sce_module/libc.prx",
                folder / "sce_sys/param.json", folder / "sce_sys/icon0.png"]
     n.build(outputs, "ps5_title_stage", module, implicit=["tools/ps5_title.py", "port/ps5/sce_sys/param.json"])

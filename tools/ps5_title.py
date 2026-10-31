@@ -204,6 +204,7 @@ def main() -> None:
     compile_parser.add_argument("output", type=Path)
     compile_parser.add_argument("flags", nargs=argparse.REMAINDER)
     link_parser = commands.add_parser("link")
+    link_parser.add_argument("--mesa", action="store_true")
     link_parser.add_argument("build", type=Path)
     link_parser.add_argument("objects", nargs="+", type=Path)
     stage_parser = commands.add_parser("stage")
@@ -225,7 +226,9 @@ def main() -> None:
     if args.command == "compile":
         toolchain.compile(args.source, args.output, args.flags)
     elif args.command == "link":
-        toolchain.link(args.objects, args.build)
+        mesa = Path("build/ps5/deps/mesa/lib")
+        toolchain.link(args.objects, args.build, radv_archive=mesa / "libvulkan_radeon.a" if args.mesa else None,
+                       archives=[mesa / "libgallium.a", mesa / "libEGL.a"] if args.mesa else ())
     else:
         icon = plain_icon(args.build / "icon0.png", (0x3a, 0x5f, 0x2b))
         toolchain.stage(args.build / "eboot.elf", args.folder, args.param, icon, [])

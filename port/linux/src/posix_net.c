@@ -69,7 +69,7 @@ int host_ps5_random_bytes(void *buffer, size_t size)
 		size -= (size_t)count;
 	}
 	if (requested && __sync_bool_compare_and_swap(&random_logged, 0, 1))
-		fprintf(stderr, "opence: /dev/urandom read %zu bytes\n", requested);
+		fprintf(stderr, "/dev/urandom read %zu bytes\n", requested);
 	return 0;
 }
 
