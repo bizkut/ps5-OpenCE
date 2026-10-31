@@ -352,6 +352,13 @@ Mesa 25.2.8 llvmpipe, Xvfb.
   `nan-crossing` negative controls and `test_elevator_prediction.py`'s
   `riding-up`.
 
-Not done: `tools/harness` against x32 (it compiles engine functions with
-`-m32`, not the game), `tools/android_abi_check.py` on the x32 IR, and a
+- `tools/android_abi_check.py` on LLVM IR of the 576 game, platform and
+  runtime files the x32 image compiles (their `build.ninja` commands with
+  `-S -emit-llvm`): 0 unsafe declarations.
+- This machine's kernel cannot run x32 programs (`CONFIG_X86_X32_ABI` is
+  not set; a `clang -mx32` executable does not start), so `tools/harness`
+  cannot run its engine functions as native x32 programs here; they would
+  have to be guest images run by `halo-x32 --image`.
+
+Not done: `tools/harness` against x32 (as guest images), and a
 `tools/guest_layout_check.py` in place of the hand comparison.

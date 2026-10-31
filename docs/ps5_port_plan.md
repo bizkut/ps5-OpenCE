@@ -489,9 +489,10 @@ i386 builds play bloodgulch in step in `net_compare.py`, each hosting;
 `tools/stagekit/tests` pass with `HALO_GAME=build/ps5/linux/halo-x32`; the
 x87 instructions are in 17 musl functions (long double, `fenv`, `printf`,
 `strtod`), none in the game's; the boundary structures' layouts match
-arm64_32's (compared by hand). Left: an x32 mode for `tools/harness` (it
-compiles engine functions natively with `-m32`, not the game binary), an
-x32 run of `tools/android_abi_check.py`, and `tools/guest_layout_check.py`
+arm64_32's (compared by hand); `tools/android_abi_check.py` finds no unsafe
+declaration in the x32 IR. Left: `tools/harness` against x32 (this kernel
+runs no x32 programs, so its engine functions would be built as guest
+images and run with `halo-x32 --image`), and `tools/guest_layout_check.py`
 in place of the hand comparison.
 
 ### M2. Title shell
